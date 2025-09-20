@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "82031285239",
-    "project_id": "mihonapp",
-    "storage_bucket": "mihonapp.appspot.com"
+    "project_number": "347252887835",
+    "project_id": "mihonocr",
+    "storage_bucket": "mihonocr.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:82031285239:android:336ed6dceef55c357594f2",
+        "mobilesdk_app_id": "1:347252887835:android:e1dd60ad5d4b83916543be",
         "android_client_info": {
-          "package_name": "app.mihon"
+          "package_name": "app.mihonOCR"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDTvOxBQnuXADx5isKxoynPG0nlAO8bQbk"
+          "current_key": "AIzaSyAfmherIDe5iN53xInHGf_qtF8SMEGHQFg"
         }
       ],
       "services": {
@@ -26,15 +26,15 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:82031285239:android:b7440cbdd0d33c9d7594f2",
+        "mobilesdk_app_id": "1:347252887835:android:41296da15682ae646543be",
         "android_client_info": {
-          "package_name": "app.mihon.debug"
+          "package_name": "app.mihonOCR.debug"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDTvOxBQnuXADx5isKxoynPG0nlAO8bQbk"
+          "current_key": "AIzaSyAfmherIDe5iN53xInHGf_qtF8SMEGHQFg"
         }
       ],
       "services": {
