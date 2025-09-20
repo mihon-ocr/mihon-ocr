@@ -18,6 +18,8 @@ class AppUpdateChecker {
         //     return GetApplicationRelease.Result.OsTooOld
         // }
 
+        return GetApplicationRelease.Result.OsTooOld // disable update checker
+
         return withIOContext {
             val result = getApplicationRelease.await(
                 GetApplicationRelease.Arguments(
@@ -42,9 +44,10 @@ class AppUpdateChecker {
 
 val GITHUB_REPO: String by lazy {
     if (isPreviewBuildType) {
-        "mihonapp/mihon-preview"
+        // "mihon-preview"
+        "bluolightning/mihon-ocr"
     } else {
-        "mihonapp/mihon"
+        "bluolightning/mihon-ocr"
     }
 }
 
