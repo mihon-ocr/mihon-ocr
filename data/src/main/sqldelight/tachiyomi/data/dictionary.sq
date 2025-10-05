@@ -1,0 +1,216 @@
+CREATE TABLE dictionaries (
+    _id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    revision TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    author TEXT,
+    url TEXT,
+    description TEXT,
+    attribution TEXT,
+    is_enabled INTEGER AS Boolean NOT NULL DEFAULT 1,
+    priority INTEGER NOT NULL DEFAULT 0,
+    date_added INTEGER NOT NULL,
+    UNIQUE(title, revision)
+);
+
+CREATE INDEX dictionaries_title ON dictionaries(title);
+CREATE INDEX dictionaries_is_enabled ON dictionaries(is_enabled);
+
+CREATE TABLE dictionary_tags (
+    _id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dictionary_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    tag_order INTEGER NOT NULL,
+    notes TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    FOREIGN KEY(dictionary_id) REFERENCES dictionaries(_id) ON DELETE CASCADE,
+    UNIQUE(dictionary_id, name)
+);
+
+CREATE INDEX dictionary_tags_dictionary_id ON dictionary_tags(dictionary_id);
+CREATE INDEX dictionary_tags_name ON dictionary_tags(name);
+
+CREATE TABLE dictionary_terms (
+    _id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dictionary_id INTEGER NOT NULL,
+    expression TEXT NOT NULL,
+    reading TEXT NOT NULL,
+    definition_tags TEXT,
+    rules TEXT,
+    score INTEGER NOT NULL,
+    glossary TEXT NOT NULL,
+    sequence INTEGER,
+    term_tags TEXT,
+    FOREIGN KEY(dictionary_id) REFERENCES dictionaries(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX dictionary_terms_dictionary_id ON dictionary_terms(dictionary_id);
+CREATE INDEX dictionary_terms_expression ON dictionary_terms(expression);
+CREATE INDEX dictionary_terms_reading ON dictionary_terms(reading);
+CREATE INDEX dictionary_terms_sequence ON dictionary_terms(sequence);
+
+CREATE TABLE dictionary_kanji (
+    _id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dictionary_id INTEGER NOT NULL,
+    character TEXT NOT NULL,
+    onyomi TEXT NOT NULL,
+    kunyomi TEXT NOT NULL,
+    tags TEXT,
+    meanings TEXT NOT NULL,
+    stats TEXT,
+    FOREIGN KEY(dictionary_id) REFERENCES dictionaries(_id) ON DELETE CASCADE,
+    UNIQUE(dictionary_id, character)
+);
+
+CREATE INDEX dictionary_kanji_dictionary_id ON dictionary_kanji(dictionary_id);
+CREATE INDEX dictionary_kanji_character ON dictionary_kanji(character);
+
+CREATE TABLE dictionary_term_meta (
+    _id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dictionary_id INTEGER NOT NULL,
+    expression TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    data TEXT NOT NULL,
+    FOREIGN KEY(dictionary_id) REFERENCES dictionaries(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX dictionary_term_meta_dictionary_id ON dictionary_term_meta(dictionary_id);
+CREATE INDEX dictionary_term_meta_expression ON dictionary_term_meta(expression);
+
+CREATE TABLE dictionary_kanji_meta (
+    _id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dictionary_id INTEGER NOT NULL,
+    character TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    data TEXT NOT NULL,
+    FOREIGN KEY(dictionary_id) REFERENCES dictionaries(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX dictionary_kanji_meta_dictionary_id ON dictionary_kanji_meta(dictionary_id);
+CREATE INDEX dictionary_kanji_meta_character ON dictionary_kanji_meta(character);
+
+-- Dictionary queries
+
+getDictionary:
+SELECT *
+FROM dictionaries
+WHERE _id = :id;
+
+getAllDictionaries:
+SELECT *
+FROM dictionaries
+ORDER BY priority DESC, title ASC;
+
+selectLastInsertedRowId:
+SELECT last_insert_rowid();
+
+insertDictionary:
+INSERT INTO dictionaries(title, revision, version, author, url, description, attribution, is_enabled, priority, date_added)
+VALUES (:title, :revision, :version, :author, :url, :description, :attribution, :is_enabled, :priority, :date_added);
+
+updateDictionary:
+UPDATE dictionaries
+SET title = :title,
+    revision = :revision,
+    version = :version,
+    author = :author,
+    url = :url,
+    description = :description,
+    attribution = :attribution,
+    is_enabled = :is_enabled,
+    priority = :priority
+WHERE _id = :id;
+
+deleteDictionary:
+DELETE FROM dictionaries
+WHERE _id = :id;
+
+-- Tag queries
+
+getTagsForDictionary:
+SELECT *
+FROM dictionary_tags
+WHERE dictionary_id = :dictionaryId
+ORDER BY tag_order ASC;
+
+insertTag:
+INSERT INTO dictionary_tags(dictionary_id, name, category, tag_order, notes, score)
+VALUES (:dictionary_id, :name, :category, :tag_order, :notes, :score);
+
+deleteTagsForDictionary:
+DELETE FROM dictionary_tags
+WHERE dictionary_id = :dictionaryId;
+
+-- Term queries
+
+searchTerms:
+SELECT *
+FROM dictionary_terms
+WHERE (expression LIKE '%' || :query || '%' OR reading LIKE '%' || :query || '%')
+  AND dictionary_id IN :dictionaryIds
+ORDER BY score DESC
+LIMIT :limit;
+
+getTermsByExpression:
+SELECT *
+FROM dictionary_terms
+WHERE expression = :expression
+  AND dictionary_id IN :dictionaryIds
+ORDER BY score DESC;
+
+insertTerm:
+INSERT INTO dictionary_terms(dictionary_id, expression, reading, definition_tags, rules, score, glossary, sequence, term_tags)
+VALUES (:dictionary_id, :expression, :reading, :definition_tags, :rules, :score, :glossary, :sequence, :term_tags);
+
+deleteTermsForDictionary:
+DELETE FROM dictionary_terms
+WHERE dictionary_id = :dictionaryId;
+
+-- Kanji queries
+
+getKanjiByCharacter:
+SELECT *
+FROM dictionary_kanji
+WHERE character = :character
+  AND dictionary_id IN :dictionaryIds;
+
+insertKanji:
+INSERT INTO dictionary_kanji(dictionary_id, character, onyomi, kunyomi, tags, meanings, stats)
+VALUES (:dictionary_id, :character, :onyomi, :kunyomi, :tags, :meanings, :stats);
+
+deleteKanjiForDictionary:
+DELETE FROM dictionary_kanji
+WHERE dictionary_id = :dictionaryId;
+
+-- Term meta queries
+
+getTermMetaForExpression:
+SELECT *
+FROM dictionary_term_meta
+WHERE expression = :expression
+  AND dictionary_id IN :dictionaryIds;
+
+insertTermMeta:
+INSERT INTO dictionary_term_meta(dictionary_id, expression, mode, data)
+VALUES (:dictionary_id, :expression, :mode, :data);
+
+deleteTermMetaForDictionary:
+DELETE FROM dictionary_term_meta
+WHERE dictionary_id = :dictionaryId;
+
+-- Kanji meta queries
+
+getKanjiMetaForCharacter:
+SELECT *
+FROM dictionary_kanji_meta
+WHERE character = :character
+  AND dictionary_id IN :dictionaryIds;
+
+insertKanjiMeta:
+INSERT INTO dictionary_kanji_meta(dictionary_id, character, mode, data)
+VALUES (:dictionary_id, :character, :mode, :data);
+
+deleteKanjiMetaForDictionary:
+DELETE FROM dictionary_kanji_meta
+WHERE dictionary_id = :dictionaryId;
