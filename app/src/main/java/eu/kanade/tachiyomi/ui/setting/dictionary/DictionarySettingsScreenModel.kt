@@ -29,6 +29,7 @@ import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import com.hippo.unifile.UniFile
+import eu.kanade.tachiyomi.util.system.toast
 
 class DictionarySettingsScreenModel(
     private val dictionaryInteractor: DictionaryInteractor = Injekt.get(),
@@ -89,6 +90,10 @@ class DictionarySettingsScreenModel(
                     )
                 }
 
+                result.second.forEach { warning ->
+                    context.toast(warning)
+                }
+
                 // Reload dictionaries
                 loadDictionaries()
             } catch (e: Exception) {
@@ -104,7 +109,7 @@ class DictionarySettingsScreenModel(
         }
     }
 
-    private suspend fun extractAndImportDictionary(reader: ArchiveReader): Long {
+    private suspend fun extractAndImportDictionary(reader: ArchiveReader): Pair<Long, List<String>> {
         // Update progress
         mutableState.update { it.copy(importProgress = "Reading index.json...") }
 
