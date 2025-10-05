@@ -26,7 +26,13 @@ import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.SyncChapterProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackChapter
 import mihon.data.repository.ExtensionRepoRepositoryImpl
+import mihon.data.dictionary.DictionaryParserImpl
+import mihon.data.dictionary.DictionaryRepositoryImpl
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
+import mihon.domain.dictionary.interactor.DictionaryInteractor
+import mihon.domain.dictionary.interactor.ImportDictionary
+import mihon.domain.dictionary.repository.DictionaryRepository
+import mihon.domain.dictionary.service.DictionaryParser
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
@@ -203,5 +209,10 @@ class DomainModule : InjektModule {
         addFactory { UpdateExtensionRepo(get(), get()) }
         addFactory { ToggleIncognito(get()) }
         addFactory { GetIncognitoState(get(), get(), get()) }
+
+        addSingletonFactory<DictionaryRepository> { DictionaryRepositoryImpl(get()) }
+        addSingletonFactory<DictionaryParser> { DictionaryParserImpl() }
+        addFactory { DictionaryInteractor(get()) }
+        addFactory { ImportDictionary(get()) }
     }
 }

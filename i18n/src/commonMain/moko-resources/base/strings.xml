@@ -1043,4 +1043,13 @@
 
     <!-- Dictionary Related -->
     <string name="pref_category_dictionary">Dictionary</string>
+    <string name="dictionary_import_success">Dictionary Successfully Imported</string>
+    <string name="import_dictionary">Import Dictionary</string>
+    <string name="importing_dictionary">Importing Dictionary</string>
+    <string name="installed_dictionaries">Installed Dictionaries</string>
+    <string name="dictionary_info">Dictionary Info</string>
+    <string name="label_version">Version</string>
+    <string name="label_author">Author</string>
+    <string name="label_date">Date Added</string>
+    <string name="delete_confirmation">Are you sure you want to delete "%1$s"?</string>
 </resources>
