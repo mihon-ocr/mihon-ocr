@@ -120,11 +120,11 @@ fun Dictionary_kanji_meta.toDomain(): DictionaryKanjiMeta {
 }
 
 // Helper functions for JSON parsing
-private fun parseJsonArray(json: String): List<String> {
+private fun parseJsonArray(inputJson: String?): List<String> {
     // Simple JSON array parser - assumes array of strings
-    if (json.isEmpty() || json == "[]") return emptyList()
-    
-    val trimmed = json.trim().removePrefix("[").removeSuffix("]")
+    if (inputJson == null || inputJson.isEmpty() || inputJson == "[]") return emptyList()
+
+    val trimmed = inputJson.trim().removePrefix("[").removeSuffix("]")
     if (trimmed.isEmpty()) return emptyList()
     
     return trimmed.split(",").map { it.trim().removeSurrounding("\"") }
