@@ -28,11 +28,11 @@ class ImportDictionary(
      */
     suspend fun import(
         index: DictionaryIndex,
-        tags: List<DictionaryTag> = emptyList(),
-        terms: List<DictionaryTerm> = emptyList(),
-        kanji: List<DictionaryKanji> = emptyList(),
-        termMeta: List<DictionaryTermMeta> = emptyList(),
-        kanjiMeta: List<DictionaryKanjiMeta> = emptyList(),
+        tags: List<DictionaryTag>,
+        terms: List<DictionaryTerm>,
+        kanji: List<DictionaryKanji>,
+        termMeta: List<DictionaryTermMeta>,
+        kanjiMeta: List<DictionaryKanjiMeta>,
     ): Pair<Long, List<String>> {
         // Create the dictionary record
         val dictionary = Dictionary(

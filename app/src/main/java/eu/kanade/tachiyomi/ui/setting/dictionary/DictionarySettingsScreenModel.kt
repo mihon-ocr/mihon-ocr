@@ -125,84 +125,50 @@ class DictionarySettingsScreenModel(
 
         mutableState.update { it.copy(importProgress = "Parsing dictionary files...") }
 
-        // Parse tag banks
+        // Parse all bank files in a single pass
         val tags = mutableListOf<DictionaryTag>()
-        reader.useEntries { entries ->
-            entries
-                .filter { it.isFile && it.name.matches(Regex("tag_bank_\\d+\\.json")) }
-                .forEach { entry ->
-                    val json = reader.getInputStream(entry.name)?.bufferedReader()?.use { it.readText() }
-                        ?: return@forEach
-                    try {
-                        tags.addAll(dictionaryParser.parseTagBank(json))
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "Failed to parse ${entry.name}" }
-                    }
-                }
-        }
-
-        // Parse term banks
         val terms = mutableListOf<DictionaryTerm>()
-        reader.useEntries { entries ->
-            entries
-                .filter { it.isFile && it.name.matches(Regex("term_bank_\\d+\\.json")) }
-                .forEach { entry ->
-                    val json = reader.getInputStream(entry.name)?.bufferedReader()?.use { it.readText() }
-                        ?: return@forEach
-                    try {
-                        terms.addAll(dictionaryParser.parseTermBank(json, index.effectiveVersion))
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "Failed to parse ${entry.name}" }
-                    }
-                }
-        }
-
-        // Parse kanji banks
         val kanji = mutableListOf<DictionaryKanji>()
-        reader.useEntries { entries ->
-            entries
-                .filter { it.isFile && it.name.matches(Regex("kanji_bank_\\d+\\.json")) }
-                .forEach { entry ->
-                    val json = reader.getInputStream(entry.name)?.bufferedReader()?.use { it.readText() }
-                        ?: return@forEach
-                    try {
-                        kanji.addAll(dictionaryParser.parseKanjiBank(json, index.effectiveVersion))
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "Failed to parse ${entry.name}" }
-                    }
-                }
-        }
-
-        // Parse term meta banks
         val termMeta = mutableListOf<DictionaryTermMeta>()
+        val kanjiMeta = mutableListOf<DictionaryKanjiMeta>()
+
+        val tagRegex = Regex("^tag_bank_\\d+\\.json$")
+        val termRegex = Regex("^term_bank_\\d+\\.json$")
+        val kanjiRegex = Regex("^kanji_bank_\\d+\\.json$")
+        val termMetaRegex = Regex("^term_meta_bank_\\d+\\.json$")
+        val kanjiMetaRegex = Regex("^kanji_meta_bank_\\d+\\.json$")
+
+        val fileEntries = mutableListOf<String>()
         reader.useEntries { entries ->
             entries
-                .filter { it.isFile && it.name.matches(Regex("term_meta_bank_\\d+\\.json")) }
-                .forEach { entry ->
-                    val json = reader.getInputStream(entry.name)?.bufferedReader()?.use { it.readText() }
-                        ?: return@forEach
-                    try {
-                        termMeta.addAll(dictionaryParser.parseTermMetaBank(json))
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "Failed to parse ${entry.name}" }
-                    }
-                }
+            .filter { it.isFile }
+            .forEach { entry ->
+                fileEntries.add(entry.name)
+            }
         }
 
-        // Parse kanji meta banks
-        val kanjiMeta = mutableListOf<DictionaryKanjiMeta>()
-        reader.useEntries { entries ->
-            entries
-                .filter { it.isFile && it.name.matches(Regex("kanji_meta_bank_\\d+\\.json")) }
-                .forEach { entry ->
-                    val json = reader.getInputStream(entry.name)?.bufferedReader()?.use { it.readText() }
-                        ?: return@forEach
-                    try {
+        fileEntries.forEach { entryName ->
+            val json = reader.getInputStream(entryName)?.bufferedReader()?.use { it.readText() }
+                ?: return@forEach
+
+            val fileName = entryName.substringAfterLast('/').substringAfterLast('\\')
+
+            try {
+                when {
+                    fileName.matches(termMetaRegex) ->
+                        termMeta.addAll(dictionaryParser.parseTermMetaBank(json))
+                    fileName.matches(kanjiMetaRegex) ->
                         kanjiMeta.addAll(dictionaryParser.parseKanjiMetaBank(json))
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "Failed to parse ${entry.name}" }
-                    }
+                    fileName.matches(termRegex) ->
+                        terms.addAll(dictionaryParser.parseTermBank(json, index.effectiveVersion))
+                    fileName.matches(kanjiRegex) ->
+                        kanji.addAll(dictionaryParser.parseKanjiBank(json, index.effectiveVersion))
+                    fileName.matches(tagRegex) ->
+                        tags.addAll(dictionaryParser.parseTagBank(json))
                 }
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "Failed to parse $fileName" }
+            }
         }
 
         mutableState.update {

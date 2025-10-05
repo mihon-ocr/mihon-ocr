@@ -97,6 +97,17 @@ class DictionaryParserImpl : DictionaryParser {
         }
     }
 
+    private fun parseStringOrArray(element: JsonElement): String? {
+        return when (element) {
+            is JsonPrimitive -> element.contentOrNull
+            is JsonArray -> {
+                if (element.isEmpty()) null
+                else element.joinToString(" ") { it.jsonPrimitive.content }
+            }
+            else -> null
+        }
+    }
+
     private fun parseTermBankV1(array: JsonArray): DictionaryTerm {
         // V1 format: [expression, reading, definitionTags, rules, score, ...glossary]
         val glossary = array.drop(5).map { it.jsonPrimitive.content }
@@ -104,8 +115,8 @@ class DictionaryParserImpl : DictionaryParser {
             dictionaryId = 0L,
             expression = array[0].jsonPrimitive.content,
             reading = array[1].jsonPrimitive.content,
-            definitionTags = array[2].jsonPrimitive.contentOrNull,
-            rules = array[3].jsonPrimitive.contentOrNull,
+            definitionTags = parseStringOrArray(array[2]),
+            rules = parseStringOrArray(array[3]),
             score = array[4].jsonPrimitive.int,
             glossary = glossary,
             sequence = null,
@@ -119,7 +130,16 @@ class DictionaryParserImpl : DictionaryParser {
         val glossary = glossaryArray.map {
             when (it) {
                 is JsonPrimitive -> it.content
-                is JsonObject -> it["content"]?.jsonPrimitive?.content ?: it.toString()
+                is JsonObject -> {
+                    // Handle different glossary object types: text, image, structured-content
+                    val type = it["type"]?.jsonPrimitive?.contentOrNull
+                    when (type) {
+                        "text" -> it["text"]?.jsonPrimitive?.contentOrNull ?: it.toString()
+                        "structured-content", "image" -> it.toString()
+                        else -> it.toString()
+                    }
+                }
+                is JsonArray -> it.toString() // Deinflection array
                 else -> it.toString()
             }
         }
@@ -128,12 +148,12 @@ class DictionaryParserImpl : DictionaryParser {
             dictionaryId = 0L,
             expression = array[0].jsonPrimitive.content,
             reading = array[1].jsonPrimitive.content,
-            definitionTags = array[2].jsonPrimitive.contentOrNull,
-            rules = array[3].jsonPrimitive.contentOrNull,
+            definitionTags = parseStringOrArray(array[2]),
+            rules = parseStringOrArray(array[3]),
             score = array[4].jsonPrimitive.int,
             glossary = glossary,
             sequence = array.getOrNull(6)?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
-            termTags = array.getOrNull(7)?.jsonPrimitive?.contentOrNull,
+            termTags = array.getOrNull(7)?.let { parseStringOrArray(it) },
         )
     }
 
@@ -161,7 +181,7 @@ class DictionaryParserImpl : DictionaryParser {
             character = array[0].jsonPrimitive.content,
             onyomi = array[1].jsonPrimitive.content,
             kunyomi = array[2].jsonPrimitive.content,
-            tags = array[3].jsonPrimitive.contentOrNull,
+            tags = parseStringOrArray(array[3]),
             meanings = meanings,
             stats = null,
         )
@@ -185,7 +205,7 @@ class DictionaryParserImpl : DictionaryParser {
             character = array[0].jsonPrimitive.content,
             onyomi = array[1].jsonPrimitive.content,
             kunyomi = array[2].jsonPrimitive.content,
-            tags = array[3].jsonPrimitive.contentOrNull,
+            tags = parseStringOrArray(array[3]),
             meanings = meanings,
             stats = stats,
         )
