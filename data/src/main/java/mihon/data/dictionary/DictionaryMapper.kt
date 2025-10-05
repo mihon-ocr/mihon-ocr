@@ -53,7 +53,8 @@ fun Dictionaries.toDomain(): Dictionary {
         url = url,
         description = description,
         attribution = attribution,
-        isEnabled = is_enabled,
+        // SQL stores is_enabled as INTEGER (0/1). Convert to Boolean here.
+        isEnabled = (is_enabled == 1L),
         priority = priority,
         dateAdded = date_added,
     )
@@ -126,17 +127,17 @@ private fun parseJsonArray(inputJson: String?): List<String> {
 
     val trimmed = inputJson.trim().removePrefix("[").removeSuffix("]")
     if (trimmed.isEmpty()) return emptyList()
-    
+
     return trimmed.split(",").map { it.trim().removeSurrounding("\"") }
 }
 
 private fun parseJsonObject(json: String): Map<String, String> {
     // Simple JSON object parser
     if (json.isEmpty() || json == "{}") return emptyMap()
-    
+
     val trimmed = json.trim().removePrefix("{").removeSuffix("}")
     if (trimmed.isEmpty()) return emptyMap()
-    
+
     return trimmed.split(",").mapNotNull { pair ->
         val parts = pair.split(":", limit = 2)
         if (parts.size == 2) {

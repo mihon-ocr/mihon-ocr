@@ -29,7 +29,8 @@ class DictionaryRepositoryImpl(
                 url = dictionary.url,
                 description = dictionary.description,
                 attribution = dictionary.attribution,
-                is_enabled = dictionary.isEnabled,
+                // Store boolean as integer (1 = true, 0 = false)
+                is_enabled = if (dictionary.isEnabled) 1L else 0L,
                 priority = dictionary.priority.toLong(),
                 date_added = dictionary.dateAdded,
             )
@@ -48,7 +49,8 @@ class DictionaryRepositoryImpl(
                 url = dictionary.url,
                 description = dictionary.description,
                 attribution = dictionary.attribution,
-                is_enabled = dictionary.isEnabled,
+                // Store boolean as integer (1 = true, 0 = false)
+                is_enabled = if (dictionary.isEnabled) 1L else 0L,
                 priority = dictionary.priority.toLong(),
             )
         }
@@ -254,22 +256,22 @@ class DictionaryRepositoryImpl(
         url: String?,
         description: String?,
         attribution: String?,
-        isEnabled: Boolean,
+        isEnabled: Long,
         priority: Long,
         dateAdded: Long,
     ): Dictionary {
         return Dictionary(
-            id,
-            title,
-            revision,
+            id = id,
+            title = title,
+            revision = revision,
             version = version.toInt(),
-            author,
-            url,
-            description,
-            attribution,
-            isEnabled,
+            author = author,
+            url = url,
+            description = description,
+            attribution = attribution,
+            isEnabled = isEnabled == 1L,
             priority = priority.toInt(),
-            dateAdded,
+            dateAdded = dateAdded,
         )
     }
 }
