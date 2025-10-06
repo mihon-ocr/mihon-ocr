@@ -83,16 +83,18 @@ class DictionaryRepositoryImpl(
     // Tag operations
 
     override suspend fun insertTags(tags: List<DictionaryTag>) {
-        handler.await(inTransaction = true) {
-            tags.forEach { tag ->
-                dictionaryQueries.insertTag(
-                    dictionary_id = tag.dictionaryId,
-                    name = tag.name,
-                    category = tag.category,
-                    tag_order = tag.order.toLong(),
-                    notes = tag.notes,
-                    score = tag.score.toLong(),
-                )
+        tags.chunked(100).forEach { chunk ->
+            handler.await(inTransaction = true) {
+                chunk.forEach { tag ->
+                    dictionaryQueries.insertTag(
+                        dictionary_id = tag.dictionaryId,
+                        name = tag.name,
+                        category = tag.category,
+                        tag_order = tag.order.toLong(),
+                        notes = tag.notes,
+                        score = tag.score.toLong(),
+                    )
+                }
             }
         }
     }
@@ -112,19 +114,21 @@ class DictionaryRepositoryImpl(
     // Term operations
 
     override suspend fun insertTerms(terms: List<DictionaryTerm>) {
-        handler.await(inTransaction = true) {
-            terms.forEach { term ->
-                dictionaryQueries.insertTerm(
-                    dictionary_id = term.dictionaryId,
-                    expression = term.expression,
-                    reading = term.reading,
-                    definition_tags = term.definitionTags,
-                    rules = term.rules,
-                    score = term.score.toLong(),
-                    glossary = json.encodeToString(term.glossary),
-                    sequence = term.sequence,
-                    term_tags = term.termTags,
-                )
+        terms.chunked(2000).forEach { chunk ->
+            handler.await(inTransaction = true) {
+                chunk.forEach { term ->
+                    dictionaryQueries.insertTerm(
+                        dictionary_id = term.dictionaryId,
+                        expression = term.expression,
+                        reading = term.reading,
+                        definition_tags = term.definitionTags,
+                        rules = term.rules,
+                        score = term.score.toLong(),
+                        glossary = json.encodeToString(term.glossary),
+                        sequence = term.sequence,
+                        term_tags = term.termTags,
+                    )
+                }
             }
         }
     }
@@ -157,17 +161,19 @@ class DictionaryRepositoryImpl(
     // Kanji operations
 
     override suspend fun insertKanji(kanji: List<DictionaryKanji>) {
-        handler.await(inTransaction = true) {
-            kanji.forEach { k ->
-                dictionaryQueries.insertKanji(
-                    dictionary_id = k.dictionaryId,
-                    character = k.character,
-                    onyomi = k.onyomi,
-                    kunyomi = k.kunyomi,
-                    tags = k.tags,
-                    meanings = json.encodeToString(k.meanings),
-                    stats = k.stats?.let { json.encodeToString(it) },
-                )
+        kanji.chunked(2000).forEach { chunk ->
+            handler.await(inTransaction = true) {
+                chunk.forEach { k ->
+                    dictionaryQueries.insertKanji(
+                        dictionary_id = k.dictionaryId,
+                        character = k.character,
+                        onyomi = k.onyomi,
+                        kunyomi = k.kunyomi,
+                        tags = k.tags,
+                        meanings = json.encodeToString(k.meanings),
+                        stats = k.stats?.let { json.encodeToString(it) },
+                    )
+                }
             }
         }
     }
@@ -190,14 +196,16 @@ class DictionaryRepositoryImpl(
     // Term meta operations
 
     override suspend fun insertTermMeta(termMeta: List<DictionaryTermMeta>) {
-        handler.await(inTransaction = true) {
-            termMeta.forEach { meta ->
-                dictionaryQueries.insertTermMeta(
-                    dictionary_id = meta.dictionaryId,
-                    expression = meta.expression,
-                    mode = meta.mode.toDbString(),
-                    data = meta.data,
-                )
+        termMeta.chunked(2000).forEach { chunk ->
+            handler.await(inTransaction = true) {
+                chunk.forEach { meta ->
+                    dictionaryQueries.insertTermMeta(
+                        dictionary_id = meta.dictionaryId,
+                        expression = meta.expression,
+                        mode = meta.mode.toDbString(),
+                        data = meta.data,
+                    )
+                }
             }
         }
     }
@@ -220,14 +228,16 @@ class DictionaryRepositoryImpl(
     // Kanji meta operations
 
     override suspend fun insertKanjiMeta(kanjiMeta: List<DictionaryKanjiMeta>) {
-        handler.await(inTransaction = true) {
-            kanjiMeta.forEach { meta ->
-                dictionaryQueries.insertKanjiMeta(
-                    dictionary_id = meta.dictionaryId,
-                    character = meta.character,
-                    mode = meta.mode.toDbString(),
-                    data = meta.data,
-                )
+        kanjiMeta.chunked(2000).forEach { chunk ->
+            handler.await(inTransaction = true) {
+                chunk.forEach { meta ->
+                    dictionaryQueries.insertKanjiMeta(
+                        dictionary_id = meta.dictionaryId,
+                        character = meta.character,
+                        mode = meta.mode.toDbString(),
+                        data = meta.data,
+                    )
+                }
             }
         }
     }
