@@ -138,33 +138,29 @@ class DictionarySettingsScreenModel(
         val termMetaRegex = Regex("^term_meta_bank_\\d+\\.json$")
         val kanjiMetaRegex = Regex("^kanji_meta_bank_\\d+\\.json$")
 
-        val fileEntries = mutableListOf<String>()
-        reader.useEntries { entries ->
-            entries
-            .filter { it.isFile }
-            .forEach { entry ->
-                fileEntries.add(entry.name)
-            }
-        }
+        reader.useEntriesAndStreams { entry, stream ->
+            if (!entry.isFile) return@useEntriesAndStreams
 
-        fileEntries.forEach { entryName ->
-            val json = reader.getInputStream(entryName)?.bufferedReader()?.use { it.readText() }
-                ?: return@forEach
-
+            val entryName = entry.name
             val fileName = entryName.substringAfterLast('/').substringAfterLast('\\')
+
+            // Skip index.json as it's already processed
+            if (fileName == "index.json") return@useEntriesAndStreams
+
+            val dataJson = stream.bufferedReader().readText()
 
             try {
                 when {
                     fileName.matches(termMetaRegex) ->
-                        termMeta.addAll(dictionaryParser.parseTermMetaBank(json))
+                        termMeta.addAll(dictionaryParser.parseTermMetaBank(dataJson))
                     fileName.matches(kanjiMetaRegex) ->
-                        kanjiMeta.addAll(dictionaryParser.parseKanjiMetaBank(json))
+                        kanjiMeta.addAll(dictionaryParser.parseKanjiMetaBank(dataJson))
                     fileName.matches(termRegex) ->
-                        terms.addAll(dictionaryParser.parseTermBank(json, index.effectiveVersion))
+                        terms.addAll(dictionaryParser.parseTermBank(dataJson, index.effectiveVersion))
                     fileName.matches(kanjiRegex) ->
-                        kanji.addAll(dictionaryParser.parseKanjiBank(json, index.effectiveVersion))
+                        kanji.addAll(dictionaryParser.parseKanjiBank(dataJson, index.effectiveVersion))
                     fileName.matches(tagRegex) ->
-                        tags.addAll(dictionaryParser.parseTagBank(json))
+                        tags.addAll(dictionaryParser.parseTagBank(dataJson))
                 }
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { "Failed to parse $fileName" }

@@ -32,6 +32,15 @@ class ArchiveReader(pfd: ParcelFileDescriptor) : Closeable {
         return null
     }
 
+    fun useEntriesAndStreams(block: (ArchiveEntry, InputStream) -> Unit) {
+        ArchiveInputStream(address, size).use { stream ->
+            while (true) {
+                val entry = stream.getNextEntry() ?: break
+                block(entry, stream)
+            }
+        }
+    }
+
     override fun close() {
         Os.munmap(address, size)
     }
