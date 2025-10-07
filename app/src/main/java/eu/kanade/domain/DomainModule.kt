@@ -31,6 +31,7 @@ import mihon.data.dictionary.DictionaryRepositoryImpl
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.dictionary.interactor.DictionaryInteractor
 import mihon.domain.dictionary.interactor.ImportDictionary
+import mihon.domain.dictionary.interactor.SearchDictionaryTerms
 import mihon.domain.dictionary.repository.DictionaryRepository
 import mihon.domain.dictionary.service.DictionaryParser
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
@@ -213,6 +214,7 @@ class DomainModule : InjektModule {
         addSingletonFactory<DictionaryRepository> { DictionaryRepositoryImpl(get()) }
         addSingletonFactory<DictionaryParser> { DictionaryParserImpl() }
         addFactory { DictionaryInteractor(get()) }
+        addFactory { SearchDictionaryTerms(get()) }
         addFactory { ImportDictionary(get()) }
     }
 }

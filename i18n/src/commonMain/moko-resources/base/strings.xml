@@ -1052,4 +1052,8 @@
     <string name="label_author">Author</string>
     <string name="label_date">Date Added</string>
     <string name="delete_confirmation">Are you sure you want to delete "%1$s"?</string>
+    <string name="label_dictionary">Dictionary</string>
+    <string name="label_dictionaries">Dictionaries</string>
+    <string name="information_empty_dictionary_search">Search for terms in your dictionaries</string>
+    <string name="more_definitions">+%1$d more definitions</string>
 </resources>
