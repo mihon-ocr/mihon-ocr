@@ -145,19 +145,23 @@ WHERE dictionary_id = :dictionaryId;
 -- Term queries
 
 searchTerms:
-SELECT *
-FROM dictionary_terms
-WHERE (expression LIKE '%' || :query || '%' OR reading LIKE '%' || :query || '%')
-  AND dictionary_id IN :dictionaryIds
-ORDER BY score DESC
+SELECT T.*
+FROM dictionary_terms AS T
+JOIN dictionaries AS D ON T.dictionary_id = D._id
+WHERE (T.expression LIKE '%' || :query || '%' OR T.reading LIKE '%' || :query || '%')
+  AND T.dictionary_id IN :dictionaryIds
+  AND D.is_enabled = 1
+ORDER BY T.score DESC
 LIMIT :limit;
 
 getTermsByExpression:
-SELECT *
-FROM dictionary_terms
-WHERE expression = :expression
-  AND dictionary_id IN :dictionaryIds
-ORDER BY score DESC;
+SELECT T.*
+FROM dictionary_terms AS T
+JOIN dictionaries AS D ON T.dictionary_id = D._id
+WHERE T.expression = :expression
+  AND T.dictionary_id IN :dictionaryIds
+  AND D.is_enabled = 1
+ORDER BY T.score DESC;
 
 insertTerm:
 INSERT INTO dictionary_terms(dictionary_id, expression, reading, definition_tags, rules, score, glossary, sequence, term_tags)
@@ -170,10 +174,12 @@ WHERE dictionary_id = :dictionaryId;
 -- Kanji queries
 
 getKanjiByCharacter:
-SELECT *
-FROM dictionary_kanji
-WHERE character = :character
-  AND dictionary_id IN :dictionaryIds;
+SELECT K.*
+FROM dictionary_kanji AS K
+JOIN dictionaries AS D ON K.dictionary_id = D._id
+WHERE K.character = :character
+  AND K.dictionary_id IN :dictionaryIds
+  AND D.is_enabled = 1;
 
 insertKanji:
 INSERT INTO dictionary_kanji(dictionary_id, character, onyomi, kunyomi, tags, meanings, stats)
@@ -186,10 +192,12 @@ WHERE dictionary_id = :dictionaryId;
 -- Term meta queries
 
 getTermMetaForExpression:
-SELECT *
-FROM dictionary_term_meta
-WHERE expression = :expression
-  AND dictionary_id IN :dictionaryIds;
+SELECT M.*
+FROM dictionary_term_meta AS M
+JOIN dictionaries AS D ON M.dictionary_id = D._id
+WHERE M.expression = :expression
+  AND M.dictionary_id IN :dictionaryIds
+  AND D.is_enabled = 1;
 
 insertTermMeta:
 INSERT INTO dictionary_term_meta(dictionary_id, expression, mode, data)
@@ -202,10 +210,12 @@ WHERE dictionary_id = :dictionaryId;
 -- Kanji meta queries
 
 getKanjiMetaForCharacter:
-SELECT *
-FROM dictionary_kanji_meta
-WHERE character = :character
-  AND dictionary_id IN :dictionaryIds;
+SELECT M.*
+FROM dictionary_kanji_meta AS M
+JOIN dictionaries AS D ON M.dictionary_id = D._id
+WHERE M.character = :character
+  AND M.dictionary_id IN :dictionaryIds
+  AND D.is_enabled = 1;
 
 insertKanjiMeta:
 INSERT INTO dictionary_kanji_meta(dictionary_id, character, mode, data)
