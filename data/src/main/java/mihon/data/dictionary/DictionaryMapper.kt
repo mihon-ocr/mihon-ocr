@@ -1,5 +1,8 @@
 package mihon.data.dictionary
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import mihon.domain.dictionary.model.DictionaryKanji
 import mihon.domain.dictionary.model.DictionaryKanjiMeta
 import mihon.domain.dictionary.model.DictionaryTag
@@ -121,14 +124,65 @@ fun Dictionary_kanji_meta.toDomain(): DictionaryKanjiMeta {
 }
 
 // Helper functions for JSON parsing
+private val jsonParser = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+}
+
 private fun parseJsonArray(inputJson: String?): List<String> {
-    // Simple JSON array parser - assumes array of strings
     if (inputJson == null || inputJson.isEmpty() || inputJson == "[]") return emptyList()
 
-    val trimmed = inputJson.trim().removePrefix("[").removeSuffix("]")
-    if (trimmed.isEmpty()) return emptyList()
+    return try {
+        val jsonArray = jsonParser.parseToJsonElement(inputJson).jsonArray
+        jsonArray.map { element ->
+            element.jsonPrimitive.content
+        }
+    } catch (e: Exception) {
+        // Fallback to simple parsing if JSON parsing fails
+        val trimmed = inputJson.trim().removePrefix("[").removeSuffix("]")
+        if (trimmed.isEmpty()) {
+            emptyList()
+        } else {
+            // For complex nested JSON, try to extract quoted strings properly
+            val result = mutableListOf<String>()
+            var inString = false
+            var escaped = false
+            var depth = 0
+            val currentToken = StringBuilder()
 
-    return trimmed.split(",").map { it.trim().removeSurrounding("\"") }
+            for (char in trimmed) {
+                when {
+                    escaped -> {
+                        currentToken.append(char)
+                        escaped = false
+                    }
+                    char == '\\' -> {
+                        escaped = true
+                        currentToken.append(char)
+                    }
+                    char == '"' -> {
+                        inString = !inString
+                        if (depth == 0 && !inString && currentToken.isNotEmpty()) {
+                            result.add(currentToken.toString())
+                            currentToken.clear()
+                        }
+                    }
+                    inString -> {
+                        currentToken.append(char)
+                    }
+                    char == '{' || char == '[' -> {
+                        depth++
+                        if (depth == 1) currentToken.clear()
+                    }
+                    char == '}' || char == ']' -> {
+                        depth--
+                    }
+                }
+            }
+
+            result
+        }
+    }
 }
 
 private fun parseJsonObject(json: String): Map<String, String> {
