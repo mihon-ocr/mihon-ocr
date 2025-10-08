@@ -11,11 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,11 +32,18 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.tachiyomi.ui.dictionary.DictionarySearchScreenModel
 import mihon.domain.dictionary.model.Dictionary
@@ -200,18 +211,189 @@ private fun DictionaryTermCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Definitions
-            term.glossary.take(3).forEach { definition ->
+            // Check if this is a "forms" entry - if so, show it differently
+            val isFormsEntry = term.definitionTags?.contains("forms") == true
+
+            // Parse and display glossary content
+            val glossaryData = remember(term.glossary, isFormsEntry) {
+                if (term.glossary.isNotEmpty()) {
+                    // Reconstruct JSON array from the list
+                    // The glossary list contains the raw JSON strings from the database
+                    val jsonArray = buildString {
+                        append("[")
+                        term.glossary.forEachIndexed { index, item ->
+                            if (index > 0) append(",")
+                            // The items are already JSON strings, so we need to escape them properly
+                            append("\"")
+                            append(item.replace("\\", "\\\\").replace("\"", "\\\""))
+                            append("\"")
+                        }
+                        append("]")
+                    }
+                    GlossaryFormatter.parseGlossary(jsonArray)
+                } else {
+                    GlossaryData(emptyList(), false)
+                }
+            }
+
+            val formattedItems = remember(glossaryData) {
+                GlossaryFormatter.formatForDisplay(glossaryData)
+            }
+
+            // Display definition tags if present and not forms
+            val definitionTags = term.definitionTags
+            if (!isFormsEntry && !definitionTags.isNullOrBlank()) {
                 Text(
-                    text = "• $definition",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(vertical = 2.dp),
+                    text = definitionTags.replace(",", " · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
 
-            if (term.glossary.size > 3) {
+            // Display formatted glossary items
+            formattedItems.take(5).forEach { item ->
+                when (item) {
+                    is FormattedGlossaryItem.Definition -> {
+                        Row(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Text(
+                                text = "◦ ",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = item.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                    is FormattedGlossaryItem.MultipleDefinitions -> {
+                        item.definitions.forEach { def ->
+                            Row(
+                                modifier = Modifier.padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Text(
+                                    text = "◦ ",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    text = def,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+                    }
+                    is FormattedGlossaryItem.AlternativeForms -> {
+                        Row(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Forms: ",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = item.forms.joinToString(", "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontStyle = FontStyle.Italic,
+                            )
+                        }
+                    }
+                    is FormattedGlossaryItem.Info -> {
+                        Row(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp).padding(end = 4.dp),
+                                tint = MaterialTheme.colorScheme.tertiary,
+                            )
+                            Text(
+                                text = item.text,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                fontStyle = FontStyle.Italic,
+                            )
+                        }
+                    }
+                    is FormattedGlossaryItem.Reference -> {
+                        Row(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowForward,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp).padding(end = 4.dp),
+                                tint = MaterialTheme.colorScheme.secondary,
+                            )
+                            val annotatedString = buildAnnotatedString {
+                                // Find the link text in the full text
+                                val startIndex = item.fullText.indexOf(item.linkText)
+                                if (startIndex != -1) {
+                                    val beforeLink = item.fullText.substring(0, startIndex)
+                                    val afterLink = item.fullText.substring(startIndex + item.linkText.length)
+                                    
+                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
+                                        append(beforeLink)
+                                    }
+                                    
+                                    pushStringAnnotation(tag = "LINK", annotation = item.linkQuery)
+                                    withStyle(
+                                        SpanStyle(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            textDecoration = TextDecoration.Underline,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    ) {
+                                        append(item.linkText)
+                                    }
+                                    pop()
+                                    
+                                    withStyle(SpanStyle(
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp,
+                                    )) {
+                                        append(afterLink)
+                                    }
+                                } else {
+                                    // Fallback if parsing fails
+                                    append(item.fullText)
+                                }
+                            }
+                            
+                            ClickableText(
+                                text = annotatedString,
+                                style = MaterialTheme.typography.bodySmall,
+                                onClick = { offset ->
+                                    annotatedString.getStringAnnotations(
+                                        tag = "LINK",
+                                        start = offset,
+                                        end = offset,
+                                    ).firstOrNull()?.let { annotation ->
+                                        // TODO: Navigate to the referenced term
+                                        // onQueryChange(annotation.item)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (formattedItems.size > 5) {
                 Text(
-                    text = stringResource(MR.strings.more_definitions, term.glossary.size - 3),
+                    text = stringResource(MR.strings.more_definitions, formattedItems.size - 5),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 4.dp),
