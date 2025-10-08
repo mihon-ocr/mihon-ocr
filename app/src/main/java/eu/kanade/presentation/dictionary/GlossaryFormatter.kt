@@ -188,6 +188,7 @@ object GlossaryFormatter {
                     val elementTag = element["tag"]?.jsonPrimitive?.content
                     if (elementTag == "a") {
                         linkText = element["content"]?.jsonPrimitive?.content ?: ""
+                        parts.add(linkText)
                         val href = element["href"]?.jsonPrimitive?.content ?: ""
                         // Extract query from href (format: ?query=...&wildcards=off)
                         linkQuery = href.substringAfter("query=").substringBefore("&")

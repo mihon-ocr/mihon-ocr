@@ -374,7 +374,7 @@ private fun DictionaryTermCard(
                             
                             ClickableText(
                                 text = annotatedString,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface),
                                 onClick = { offset ->
                                     annotatedString.getStringAnnotations(
                                         tag = "LINK",
