@@ -12,6 +12,7 @@ ktlint-core = "1.7.1"
 firebase-bom = "34.3.0"
 markdown = "0.37.0"
 junit = "6.0.0"
+wanakana-core-version = "1.1.1"
 
 [libraries]
 desugar = "com.android.tools:desugar_jdk_libs:2.1.5"
@@ -106,6 +107,7 @@ markdown-core = { module = "com.mikepenz:multiplatform-markdown-renderer", versi
 markdown-coil = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "markdown" }
 
 stringSimilarity = { module = "com.aallam.similarity:string-similarity-kotlin", version = "0.1.0" }
+wanakana-core = { module = "dev.esnault.wanakana:wanakana-core", version.ref = "wanakana-core-version" }
 
 [plugins]
 google-services = { id = "com.google.gms.google-services", version = "4.4.3" }

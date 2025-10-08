@@ -27,6 +27,9 @@ dependencies {
     implementation(kotlinx.bundles.coroutines)
     implementation(kotlinx.bundles.serialization)
 
+    // Dictionary Search
+    implementation(libs.wanakana.core)
+
     implementation(libs.unifile)
 
     api(libs.sqldelight.android.paging)
