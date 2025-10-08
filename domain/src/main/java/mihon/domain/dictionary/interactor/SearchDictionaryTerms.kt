@@ -10,7 +10,8 @@ class SearchDictionaryTerms(
     private val dictionaryRepository: DictionaryRepository,
 ) {
     suspend fun search(query: String, dictionaryIds: List<Long>): List<DictionaryTerm> {
-        return dictionaryRepository.searchTerms(query, dictionaryIds)
+        var formattedQuery = query.trim()
+        return dictionaryRepository.searchTerms(formattedQuery, dictionaryIds)
     }
 
     suspend fun getByExpression(expression: String, dictionaryIds: List<Long>): List<DictionaryTerm> {
