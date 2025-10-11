@@ -273,7 +273,7 @@ private fun DictionaryTermCard(
             }
 
             // Display formatted glossary items
-            formattedItems.take(5).forEach { item ->
+            formattedItems.forEach { item ->
                 when (item) {
                     is FormattedGlossaryItem.PartOfSpeech -> {
                         Text(
