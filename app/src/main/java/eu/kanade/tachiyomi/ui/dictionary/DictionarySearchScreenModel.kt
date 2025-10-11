@@ -9,11 +9,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import logcat.LogPriority
 import mihon.domain.dictionary.interactor.DictionaryInteractor
 import mihon.domain.dictionary.interactor.SearchDictionaryTerms
 import mihon.domain.dictionary.model.Dictionary
 import mihon.domain.dictionary.model.DictionaryTerm
 import mihon.domain.dictionary.model.DictionaryTermMeta
+import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -55,6 +57,7 @@ class DictionarySearchScreenModel(
 
     fun search() {
         val query = state.value.query
+        logcat(LogPriority.DEBUG) { "Search query: ${query}" }
         if (query.isBlank()) {
             mutableState.update { it.copy(searchResults = emptyList(), termMetaMap = emptyMap()) }
             return
@@ -72,6 +75,7 @@ class DictionarySearchScreenModel(
                 }
 
                 val results = searchDictionaryTerms.search(query, enabledDictionaryIds)
+                logcat(LogPriority.DEBUG) { "Search query results: ${results}" }
 
                 // Fetch term meta (frequency data) for all results
                 val expressions = results.map { it.expression }.distinct()

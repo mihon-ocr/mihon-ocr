@@ -268,7 +268,7 @@ private fun DictionaryTermCard(
                         }
                         append("]")
                     }
-                    GlossaryFormatter.parseGlossary(jsonArray)
+                    GlossaryFormatter.parseGlossary(jsonArray, isFormsEntry)
                 } else {
                     GlossaryData(emptyList(), false)
                 }
@@ -292,6 +292,15 @@ private fun DictionaryTermCard(
             // Display formatted glossary items
             formattedItems.take(5).forEach { item ->
                 when (item) {
+                    is FormattedGlossaryItem.PartOfSpeech -> {
+                        Text(
+                            text = item.text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontStyle = FontStyle.Italic,
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
                     is FormattedGlossaryItem.Definition -> {
                         Row(
                             modifier = Modifier.padding(vertical = 2.dp),

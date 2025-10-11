@@ -13,20 +13,7 @@ import logcat.LogPriority
 
 /**
  * This formatter parses and renders glossary entries from dictionaries stored in the database.
- * The glossary column contains two distinct primary structures:
- *
- * 1. Simple String Array: Plain JSON array of alternative forms/spellings
- *    Example: ["ダイレクトプッシュ","ダイレクト・プッシュ"]
- *    Used when definition_tags = 'forms'
- *
- * 2. Structured Content JSON: Complex nested JSON with rich definition data
- *    Contains type="structured-content" with nested objects defining layout similar to HTML.
- *
- *    Variations include:
- *    A. Basic Definition: Single translation/definition (data.content="glossary")
- *    B. Multiple Definitions: Array of related definitions/abbreviations
- *    C. Definition with Info: Primary definition + supplementary note (data.content="infoGlossary")
- *    D. Definition with References: Standard definition + cross-reference links (data.content="references")
+ * Supports both V1 and V3 schemas (images are ignored).
  */
 
 /**
@@ -38,6 +25,7 @@ sealed class GlossaryEntry {
     data class Info(val text: String) : GlossaryEntry()
     data class Reference(val text: String, val linkText: String, val linkQuery: String) : GlossaryEntry()
     data class MultipleDefinitions(val definitions: List<String>) : GlossaryEntry()
+    data class PartOfSpeech(val text: String) : GlossaryEntry()
 }
 
 /**
@@ -55,9 +43,9 @@ object GlossaryFormatter {
     }
 
     /**
-     * Parse glossary JSON from the database
+     * Parse glossary JSON from the database.
      */
-    fun parseGlossary(glossaryJson: String): GlossaryData {
+    fun parseGlossary(glossaryJson: String, isFormsEntry: Boolean = false): GlossaryData {
         if (glossaryJson.isBlank() || glossaryJson == "[]") {
             return GlossaryData(emptyList(), false)
         }
@@ -75,20 +63,25 @@ object GlossaryFormatter {
             if (firstElement is JsonPrimitive && firstElement.isString) {
                 val content = firstElement.content
 
-                // Try to parse as nested JSON (structured content)
+                // Try to parse as nested JSON (Version 3 structured content)
                 if (content.startsWith("{")) {
                     parseStructuredContent(content)
                 } else {
-                    // Simple string array (alternative forms)
-                    val forms = jsonArray.map { it.jsonPrimitive.content }
-                    GlossaryData(listOf(GlossaryEntry.AlternativeForms(forms)), false)
+                    // Simple string array (Version 1 or Version 3 simple forms)
+                    val strings = jsonArray.map { it.jsonPrimitive.content }
+                    if (isFormsEntry) {
+                        GlossaryData(listOf(GlossaryEntry.AlternativeForms(strings)), false)
+                    } else {
+                        // Version 1 format: plain definition strings
+                        GlossaryData(listOf(GlossaryEntry.MultipleDefinitions(strings)), false)
+                    }
                 }
             } else {
                 // Fallback for unexpected format
                 GlossaryData(emptyList(), false)
             }
         } catch (e: Exception) {
-            // If parsing fails, return empty
+            logcat(LogPriority.ERROR) { "Failed to parse glossary: ${e.message}" }
             GlossaryData(emptyList(), false)
         }
     }
@@ -102,29 +95,62 @@ object GlossaryFormatter {
                 return GlossaryData(emptyList(), false)
             }
 
-            val content = structured["content"]
-            val entries = mutableListOf<GlossaryEntry>()
-
-            when (content) {
-                is JsonArray -> {
-                    // Multiple sections (e.g., definition + references + info)
-                    content.forEach { section ->
-                        parseSection(section.jsonObject)?.let { entries.add(it) }
-                    }
-                }
-                is JsonObject -> {
-                    // Single section
-                    parseSection(content)?.let { entries.add(it) }
-                }
-                else -> {
-                    logcat(LogPriority.WARN) { "Glossary format was not valid: $contentJson" }
-                }
-            }
+            val content = structured["content"] ?: return GlossaryData(emptyList(), false)
+            val entries = findGlossaryEntries(content)
 
             return GlossaryData(entries, true)
         } catch (e: Exception) {
+            logcat(LogPriority.ERROR) { "Failed to parse structured content: ${e.message}" }
             return GlossaryData(emptyList(), false)
         }
+    }
+
+    private fun findGlossaryEntries(element: JsonElement): List<GlossaryEntry> {
+        val entries = mutableListOf<GlossaryEntry>()
+
+        when (element) {
+            is JsonObject -> {
+                // Check if this object is a known section type we can parse directly
+                val data = element["data"]?.jsonObject
+                val contentType = data?.get("content")?.jsonPrimitive?.content
+                val content = element["content"]
+
+                val parsedEntry = when (contentType) {
+                    "glossary" -> parseGlossarySection(content)
+                    "references" -> parseReferenceSection(content)
+                    "infoGlossary" -> parseInfoSection(content)
+                    "part-of-speech-info" -> parsePartOfSpeech(element)
+                    else -> null
+                }
+
+                if (parsedEntry != null) {
+                    entries.add(parsedEntry)
+                } else {
+                    // It's not a parsable section, recurse into its content
+                    element["content"]?.let {
+                        entries.addAll(findGlossaryEntries(it))
+                    }
+                }
+            }
+            is JsonArray -> {
+                // Recurse into each element of the array
+                element.forEach {
+                    entries.addAll(findGlossaryEntries(it))
+                }
+            }
+            is JsonPrimitive -> {
+                // Can't be nested further; stop here
+            }
+        }
+        return entries
+    }
+
+    private fun parsePartOfSpeech(element: JsonObject): GlossaryEntry? {
+        val tag = element["tag"]?.jsonPrimitive?.content
+        if (tag != "span") return null
+
+        val text = element["content"]?.jsonPrimitive?.content
+        return text?.let {GlossaryEntry.PartOfSpeech(it)}
     }
 
     private fun parseSection(section: JsonObject): GlossaryEntry? {
@@ -147,12 +173,12 @@ object GlossaryFormatter {
     private fun parseGlossarySection(content: JsonElement?): GlossaryEntry? {
         return when (content) {
             is JsonObject -> {
-                // Single definition
+                // Single definition - extract text, ignore images
                 val text = extractTextFromListItem(content)
                 text?.let { GlossaryEntry.Definition(it) }
             }
             is JsonArray -> {
-                // Multiple definitions
+                // Multiple definitions - extract text from each, ignore images
                 val definitions = content.mapNotNull { item ->
                     if (item is JsonObject) {
                         extractTextFromListItem(item)
@@ -186,20 +212,29 @@ object GlossaryFormatter {
                 }
                 is JsonObject -> {
                     val elementTag = element["tag"]?.jsonPrimitive?.content
-                    if (elementTag == "a") {
-                        linkText = element["content"]?.jsonPrimitive?.content ?: ""
-                        parts.add(linkText)
-                        val href = element["href"]?.jsonPrimitive?.content ?: ""
-                        // Extract query from href (format: ?query=...&wildcards=off)
-                        linkQuery = href.substringAfter("query=").substringBefore("&")
-                    } else if (elementTag == "span") {
-                        // This is the refGlosses span with small text
-                        val spanContent = element["content"]?.jsonPrimitive?.content ?: ""
-                        parts.add(spanContent)
+                    when (elementTag) {
+                        "a" -> {
+                            linkText = element["content"]?.jsonPrimitive?.content ?: ""
+                            parts.add(linkText)
+                            val href = element["href"]?.jsonPrimitive?.content ?: ""
+                            // Extract query from href (format: ?query=...&wildcards=off)
+                            linkQuery = href.substringAfter("query=").substringBefore("&")
+                        }
+                        "span" -> {
+                            val spanContent = element["content"]?.jsonPrimitive?.content ?: ""
+                            parts.add(spanContent)
+                        }
+                        "img" -> {
+                            // Ignore images - don't add to parts
+                        }
+                        else -> {
+                            // Try to extract text from unknown tags
+                            element["content"]?.jsonPrimitive?.content?.let { parts.add(it) }
+                        }
                     }
                 }
                 else -> {
-                    logcat(LogPriority.WARN) { "Glossary reference format was not valid: $element" }
+                    logcat(LogPriority.WARN) { "Unexpected element type in reference section" }
                 }
             }
         }
@@ -217,6 +252,9 @@ object GlossaryFormatter {
         return text?.let { GlossaryEntry.Info(it) }
     }
 
+    /**
+     * Extract text content from a list item, ignoring images and other non-text elements
+     */
     private fun extractTextFromListItem(item: JsonObject): String? {
         val tag = item["tag"]?.jsonPrimitive?.content
         if (tag != "li") return null
@@ -224,6 +262,34 @@ object GlossaryFormatter {
         val content = item["content"]
         return when (content) {
             is JsonPrimitive -> content.content
+            is JsonArray -> {
+                // Handle list items with multiple children (text + images, etc.)
+                content.mapNotNull { element ->
+                    when (element) {
+                        is JsonPrimitive -> element.content
+                        is JsonObject -> {
+                            val elementTag = element["tag"]?.jsonPrimitive?.content
+                            if (elementTag == "img") {
+                                // Skip images
+                                null
+                            } else {
+                                // Try to extract text from other elements
+                                element["content"]?.jsonPrimitive?.content
+                            }
+                        }
+                        else -> null
+                    }
+                }.joinToString("")
+            }
+            is JsonObject -> {
+                // Check if it's an image tag and skip it
+                val contentTag = content["tag"]?.jsonPrimitive?.content
+                if (contentTag == "img") {
+                    null
+                } else {
+                    content["content"]?.jsonPrimitive?.content
+                }
+            }
             else -> null
         }
     }
@@ -246,6 +312,9 @@ object GlossaryFormatter {
                 is GlossaryEntry.Info -> {
                     FormattedGlossaryItem.Info(entry.text)
                 }
+                is GlossaryEntry.PartOfSpeech -> {
+                    FormattedGlossaryItem.PartOfSpeech(entry.text)
+                }
                 is GlossaryEntry.Reference -> {
                     FormattedGlossaryItem.Reference(entry.text, entry.linkText, entry.linkQuery)
                 }
@@ -262,5 +331,6 @@ sealed class FormattedGlossaryItem {
     data class MultipleDefinitions(val definitions: List<String>) : FormattedGlossaryItem()
     data class AlternativeForms(val forms: List<String>) : FormattedGlossaryItem()
     data class Info(val text: String) : FormattedGlossaryItem()
+    data class PartOfSpeech(val text: String) : FormattedGlossaryItem()
     data class Reference(val fullText: String, val linkText: String, val linkQuery: String) : FormattedGlossaryItem()
 }
