@@ -43,42 +43,27 @@ object GlossaryFormatter {
     }
 
     /**
-     * Parse glossary JSON from the database.
+     * Parse glossary from the database.
      */
-    fun parseGlossary(glossaryJson: String, isFormsEntry: Boolean = false): GlossaryData {
-        if (glossaryJson.isBlank() || glossaryJson == "[]") {
+    fun parseGlossary(glossary: List<String>, isFormsEntry: Boolean = false): GlossaryData {
+        if (glossary.isEmpty()) {
             return GlossaryData(emptyList(), false)
         }
 
         return try {
-            val jsonArray = json.parseToJsonElement(glossaryJson).jsonArray
-
-            if (jsonArray.isEmpty()) {
-                return GlossaryData(emptyList(), false)
-            }
-
-            val firstElement = jsonArray[0]
+            val firstElement = glossary[0]
 
             // Check if it's structured content (string containing JSON) or simple array
-            if (firstElement is JsonPrimitive && firstElement.isString) {
-                val content = firstElement.content
-
-                // Try to parse as nested JSON (Version 3 structured content)
-                if (content.startsWith("{")) {
-                    parseStructuredContent(content)
-                } else {
-                    // Simple string array (Version 1 or Version 3 simple forms)
-                    val strings = jsonArray.map { it.jsonPrimitive.content }
-                    if (isFormsEntry) {
-                        GlossaryData(listOf(GlossaryEntry.AlternativeForms(strings)), false)
-                    } else {
-                        // Version 1 format: plain definition strings
-                        GlossaryData(listOf(GlossaryEntry.MultipleDefinitions(strings)), false)
-                    }
-                }
+            if (firstElement.startsWith("{")) {
+                // V3 structured content, stored as a single JSON string in the list
+                parseStructuredContent(firstElement)
             } else {
-                // Fallback for unexpected format
-                GlossaryData(emptyList(), false)
+                // Simple string array (V1 definitions or V3 simple forms)
+                if (isFormsEntry) {
+                    GlossaryData(listOf(GlossaryEntry.AlternativeForms(glossary)), false)
+                } else {
+                    GlossaryData(listOf(GlossaryEntry.MultipleDefinitions(glossary)), false)
+                }
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Failed to parse glossary: ${e.message}" }

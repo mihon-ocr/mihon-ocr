@@ -254,24 +254,7 @@ private fun DictionaryTermCard(
 
             // Parse and display glossary content
             val glossaryData = remember(term.glossary, isFormsEntry) {
-                if (term.glossary.isNotEmpty()) {
-                    // Reconstruct JSON array from the list
-                    // The glossary list contains the raw JSON strings from the database
-                    val jsonArray = buildString {
-                        append("[")
-                        term.glossary.forEachIndexed { index, item ->
-                            if (index > 0) append(",")
-                            // The items are already JSON strings, so we need to escape them properly
-                            append("\"")
-                            append(item.replace("\\", "\\\\").replace("\"", "\\\""))
-                            append("\"")
-                        }
-                        append("]")
-                    }
-                    GlossaryFormatter.parseGlossary(jsonArray, isFormsEntry)
-                } else {
-                    GlossaryData(emptyList(), false)
-                }
+                GlossaryFormatter.parseGlossary(term.glossary, isFormsEntry)
             }
 
             val formattedItems = remember(glossaryData) {
