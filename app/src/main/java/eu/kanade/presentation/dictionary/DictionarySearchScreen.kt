@@ -48,6 +48,7 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.tachiyomi.ui.dictionary.DictionarySearchScreenModel
 import mihon.domain.dictionary.model.Dictionary
 import mihon.domain.dictionary.model.DictionaryTerm
+import mihon.domain.dictionary.model.DictionaryTermMeta
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -110,6 +111,7 @@ fun DictionarySearchScreen(
                     SearchResultsList(
                         results = state.searchResults,
                         dictionaries = state.dictionaries,
+                        termMetaMap = state.termMetaMap,
                         onTermClick = onTermClick,
                     )
                 }
@@ -153,6 +155,7 @@ private fun SearchBar(
 private fun SearchResultsList(
     results: List<DictionaryTerm>,
     dictionaries: List<Dictionary>,
+    termMetaMap: Map<String, List<DictionaryTermMeta>>,
     onTermClick: (DictionaryTerm) -> Unit,
 ) {
     LazyColumn(
@@ -166,6 +169,8 @@ private fun SearchResultsList(
             DictionaryTermCard(
                 term = term,
                 dictionaryName = dictionaries.find { it.id == term.dictionaryId }?.title ?: "",
+                termMeta = termMetaMap[term.expression] ?: emptyList(),
+                dictionaries = dictionaries,
                 onClick = { onTermClick(term) },
             )
         }
@@ -176,6 +181,8 @@ private fun SearchResultsList(
 private fun DictionaryTermCard(
     term: DictionaryTerm,
     dictionaryName: String,
+    termMeta: List<DictionaryTermMeta>,
+    dictionaries: List<Dictionary>,
     onClick: () -> Unit,
 ) {
     Card(
@@ -205,6 +212,37 @@ private fun DictionaryTermCard(
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+
+                // Display frequency indicator if available
+                val frequencyData = remember(termMeta) {
+                    FrequencyFormatter.parseFrequencies(termMeta)
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    frequencyData.take(3).forEach { freqInfo ->
+                        // Find the dictionary name for the frequency entry
+                        val sourceDictName = dictionaries.find { it.id == freqInfo.dictionaryId }?.title
+                            ?: dictionaryName
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = freqInfo.frequency,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+
+                            Spacer(modifier = Modifier.size(6.dp))
+
+                            Text(
+                                text = sourceDictName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -343,11 +381,11 @@ private fun DictionaryTermCard(
                                 if (startIndex != -1) {
                                     val beforeLink = item.fullText.substring(0, startIndex)
                                     val afterLink = item.fullText.substring(startIndex + item.linkText.length)
-                                    
+
                                     withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
                                         append(beforeLink)
                                     }
-                                    
+
                                     pushStringAnnotation(tag = "LINK", annotation = item.linkQuery)
                                     withStyle(
                                         SpanStyle(
@@ -359,7 +397,7 @@ private fun DictionaryTermCard(
                                         append(item.linkText)
                                     }
                                     pop()
-                                    
+
                                     withStyle(SpanStyle(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp,
@@ -371,7 +409,7 @@ private fun DictionaryTermCard(
                                     append(item.fullText)
                                 }
                             }
-                            
+
                             ClickableText(
                                 text = annotatedString,
                                 style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface),

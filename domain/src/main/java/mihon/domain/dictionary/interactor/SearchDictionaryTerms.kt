@@ -1,6 +1,7 @@
 package mihon.domain.dictionary.interactor
 
 import mihon.domain.dictionary.model.DictionaryTerm
+import mihon.domain.dictionary.model.DictionaryTermMeta
 import mihon.domain.dictionary.repository.DictionaryRepository
 import dev.esnault.wanakana.core.Wanakana
 
@@ -20,7 +21,14 @@ class SearchDictionaryTerms(
         return dictionaryRepository.searchTerms(formattedQuery, dictionaryIds)
     }
 
-    suspend fun getByExpression(expression: String, dictionaryIds: List<Long>): List<DictionaryTerm> {
-        return dictionaryRepository.getTermsByExpression(expression, dictionaryIds)
+    suspend fun getTermMeta(expressions: List<String>, dictionaryIds: List<Long>): Map<String, List<DictionaryTermMeta>> {
+        val allMeta = mutableMapOf<String, MutableList<DictionaryTermMeta>>()
+
+        expressions.forEach { expression ->
+            val meta = dictionaryRepository.getTermMetaForExpression(expression, dictionaryIds)
+            allMeta[expression] = meta.toMutableList()
+        }
+
+        return allMeta
     }
 }

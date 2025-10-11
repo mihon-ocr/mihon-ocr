@@ -13,6 +13,7 @@ import mihon.domain.dictionary.interactor.DictionaryInteractor
 import mihon.domain.dictionary.interactor.SearchDictionaryTerms
 import mihon.domain.dictionary.model.Dictionary
 import mihon.domain.dictionary.model.DictionaryTerm
+import mihon.domain.dictionary.model.DictionaryTermMeta
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -55,7 +56,7 @@ class DictionarySearchScreenModel(
     fun search() {
         val query = state.value.query
         if (query.isBlank()) {
-            mutableState.update { it.copy(searchResults = emptyList()) }
+            mutableState.update { it.copy(searchResults = emptyList(), termMetaMap = emptyMap()) }
             return
         }
 
@@ -66,14 +67,20 @@ class DictionarySearchScreenModel(
                 val enabledDictionaryIds = state.value.enabledDictionaryIds
                 if (enabledDictionaryIds.isEmpty()) {
                     _events.send(Event.ShowError("No dictionaries enabled"))
-                    mutableState.update { it.copy(isSearching = false, searchResults = emptyList()) }
+                    mutableState.update { it.copy(isSearching = false, searchResults = emptyList(), termMetaMap = emptyMap()) }
                     return@launch
                 }
 
                 val results = searchDictionaryTerms.search(query, enabledDictionaryIds)
+
+                // Fetch term meta (frequency data) for all results
+                val expressions = results.map { it.expression }.distinct()
+                val termMetaMap = searchDictionaryTerms.getTermMeta(expressions, enabledDictionaryIds)
+
                 mutableState.update {
                     it.copy(
                         searchResults = results,
+                        termMetaMap = termMetaMap,
                         isSearching = false,
                         hasSearched = true,
                     )
@@ -96,6 +103,7 @@ class DictionarySearchScreenModel(
         val dictionaries: List<Dictionary> = emptyList(),
         val enabledDictionaryIds: List<Long> = emptyList(),
         val selectedTerm: DictionaryTerm? = null,
+        val termMetaMap: Map<String, List<DictionaryTermMeta>> = emptyMap(),
         val isLoading: Boolean = true,
         val isSearching: Boolean = false,
         val hasSearched: Boolean = false,
