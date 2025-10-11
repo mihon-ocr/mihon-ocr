@@ -16,25 +16,12 @@ class ImportDictionary(
     private val dictionaryRepository: DictionaryRepository,
 ) {
     /**
-     * Imports a complete dictionary.
+     * Creates a dictionary record in the database.
      *
      * @param index The parsed index.json metadata
-     * @param tags The list of tags from tag_bank files
-     * @param terms The list of terms from term_bank files
-     * @param kanji The list of kanji from kanji_bank files
-     * @param termMeta The list of term metadata from term_meta_bank files
-     * @param kanjiMeta The list of kanji metadata from kanji_meta_bank files
-     * @return Pair where first is the ID of the imported dictionary and second is a list of warnings
+     * @return The ID of the created dictionary
      */
-    suspend fun import(
-        index: DictionaryIndex,
-        tags: List<DictionaryTag>,
-        terms: List<DictionaryTerm>,
-        kanji: List<DictionaryKanji>,
-        termMeta: List<DictionaryTermMeta>,
-        kanjiMeta: List<DictionaryKanjiMeta>,
-    ): Pair<Long, List<String>> {
-        // Create the dictionary record
+    suspend fun createDictionary(index: DictionaryIndex): Long {
         val dictionary = Dictionary(
             title = index.title,
             revision = index.revision,
@@ -44,17 +31,24 @@ class ImportDictionary(
             description = index.description,
             attribution = index.attribution,
         )
+        return dictionaryRepository.insertDictionary(dictionary)
+    }
 
-        val dictionaryId = dictionaryRepository.insertDictionary(dictionary)
-        val warnings = mutableListOf<String>()
-
-        // Import tags from tag_bank files
+    /**
+     * Imports tags into the dictionary.
+     */
+    suspend fun importTags(tags: List<DictionaryTag>, dictionaryId: Long) {
         if (tags.isNotEmpty()) {
             val tagsWithDictId = tags.map { it.copy(dictionaryId = dictionaryId) }
             dictionaryRepository.insertTags(tagsWithDictId)
         }
+    }
 
-        // Import tags from index.json tagMeta
+    /**
+     * Imports tags from the index.json tagMeta section.
+     * Newer dictionaries should use individual tag files instead of this.
+     */
+    suspend fun importIndexTags(index: DictionaryIndex, dictionaryId: Long) {
         index.tagMeta?.let { tagMeta ->
             val indexTags = tagMeta.map { (name, meta) ->
                 DictionaryTag(
@@ -68,40 +62,45 @@ class ImportDictionary(
             }
             dictionaryRepository.insertTags(indexTags)
         }
+    }
 
-        // Import terms
+    /**
+     * Imports terms into the dictionary.
+     */
+    suspend fun importTerms(terms: List<DictionaryTerm>, dictionaryId: Long) {
         if (terms.isNotEmpty()) {
             val termsWithDictId = terms.map { it.copy(dictionaryId = dictionaryId) }
             dictionaryRepository.insertTerms(termsWithDictId)
-        } else {
-            warnings.add("Dictionary contains no terms.")
         }
+    }
 
-        // Import kanji
+    /**
+     * Imports kanji into the dictionary.
+     */
+    suspend fun importKanji(kanji: List<DictionaryKanji>, dictionaryId: Long) {
         if (kanji.isNotEmpty()) {
             val kanjiWithDictId = kanji.map { it.copy(dictionaryId = dictionaryId) }
             dictionaryRepository.insertKanji(kanjiWithDictId)
-        } else {
-            warnings.add("Dictionary contains no kanji.")
         }
+    }
 
-        // Import term meta
+    /**
+     * Imports term metadata into the dictionary.
+     */
+    suspend fun importTermMeta(termMeta: List<DictionaryTermMeta>, dictionaryId: Long) {
         if (termMeta.isNotEmpty()) {
             val termMetaWithDictId = termMeta.map { it.copy(dictionaryId = dictionaryId) }
             dictionaryRepository.insertTermMeta(termMetaWithDictId)
-        } else {
-            warnings.add("Dictionary contains no term metadata.")
         }
+    }
 
-        // Import kanji meta
+    /**
+     * Imports kanji metadata into the dictionary.
+     */
+    suspend fun importKanjiMeta(kanjiMeta: List<DictionaryKanjiMeta>, dictionaryId: Long) {
         if (kanjiMeta.isNotEmpty()) {
             val kanjiMetaWithDictId = kanjiMeta.map { it.copy(dictionaryId = dictionaryId) }
             dictionaryRepository.insertKanjiMeta(kanjiMetaWithDictId)
-        } else {
-            warnings.add("Dictionary contains no kanji metadata.")
         }
-
-        // return dictionaryId and warnings
-        return dictionaryId to warnings.toList()
     }
 }

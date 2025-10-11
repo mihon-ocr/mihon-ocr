@@ -17,11 +17,6 @@ import mihon.domain.dictionary.interactor.ImportDictionary
 import mihon.domain.dictionary.model.Dictionary
 import mihon.domain.dictionary.model.DictionaryImportException
 import mihon.domain.dictionary.model.DictionaryIndex
-import mihon.domain.dictionary.model.DictionaryKanji
-import mihon.domain.dictionary.model.DictionaryKanjiMeta
-import mihon.domain.dictionary.model.DictionaryTag
-import mihon.domain.dictionary.model.DictionaryTerm
-import mihon.domain.dictionary.model.DictionaryTermMeta
 import mihon.domain.dictionary.service.DictionaryParseException
 import mihon.domain.dictionary.service.DictionaryParser
 import tachiyomi.core.common.util.system.logcat
@@ -110,7 +105,6 @@ class DictionarySettingsScreenModel(
     }
 
     private suspend fun extractAndImportDictionary(reader: ArchiveReader): Pair<Long, List<String>> {
-        // Update progress
         mutableState.update { it.copy(importProgress = "Reading index.json...") }
 
         // Parse index.json
@@ -123,20 +117,25 @@ class DictionarySettingsScreenModel(
             throw DictionaryParseException("Failed to parse index.json", e)
         }
 
-        mutableState.update { it.copy(importProgress = "Parsing dictionary files...") }
+        mutableState.update { it.copy(importProgress = "Importing dictionary info...") }
 
-        // Parse all bank files in a single pass
-        val tags = mutableListOf<DictionaryTag>()
-        val terms = mutableListOf<DictionaryTerm>()
-        val kanji = mutableListOf<DictionaryKanji>()
-        val termMeta = mutableListOf<DictionaryTermMeta>()
-        val kanjiMeta = mutableListOf<DictionaryKanjiMeta>()
+        val dictionaryId = importDictionary.createDictionary(index)
+        val warnings = mutableListOf<String>()
+
+        importDictionary.importIndexTags(index, dictionaryId)
+
+        mutableState.update { it.copy(importProgress = "Parsing and importing dictionary files...") }
 
         val tagRegex = Regex("^tag_bank_\\d+\\.json$")
         val termRegex = Regex("^term_bank_\\d+\\.json$")
         val kanjiRegex = Regex("^kanji_bank_\\d+\\.json$")
         val termMetaRegex = Regex("^term_meta_bank_\\d+\\.json$")
         val kanjiMetaRegex = Regex("^kanji_meta_bank_\\d+\\.json$")
+
+        var hasTerms = false
+        var hasKanji = false
+        var hasTermMeta = false
+        var hasKanjiMeta = false
 
         reader.useEntriesAndStreams { entry, stream ->
             if (!entry.isFile) return@useEntriesAndStreams
@@ -151,35 +150,44 @@ class DictionarySettingsScreenModel(
 
             try {
                 when {
-                    fileName.matches(termMetaRegex) ->
-                        termMeta.addAll(dictionaryParser.parseTermMetaBank(dataJson))
-                    fileName.matches(kanjiMetaRegex) ->
-                        kanjiMeta.addAll(dictionaryParser.parseKanjiMetaBank(dataJson))
-                    fileName.matches(termRegex) ->
-                        terms.addAll(dictionaryParser.parseTermBank(dataJson, index.effectiveVersion))
-                    fileName.matches(kanjiRegex) ->
-                        kanji.addAll(dictionaryParser.parseKanjiBank(dataJson, index.effectiveVersion))
-                    fileName.matches(tagRegex) ->
-                        tags.addAll(dictionaryParser.parseTagBank(dataJson))
+                    fileName.matches(termMetaRegex) -> {
+                        val termMeta = dictionaryParser.parseTermMetaBank(dataJson)
+                        if (termMeta.isNotEmpty()) hasTermMeta = true
+                        importDictionary.importTermMeta(termMeta, dictionaryId)
+                    }
+                    fileName.matches(kanjiMetaRegex) -> {
+                        val kanjiMeta = dictionaryParser.parseKanjiMetaBank(dataJson)
+                        if (kanjiMeta.isNotEmpty()) hasKanjiMeta = true
+                        importDictionary.importKanjiMeta(kanjiMeta, dictionaryId)
+                    }
+                    fileName.matches(termRegex) -> {
+                        val terms = dictionaryParser.parseTermBank(dataJson, index.effectiveVersion)
+                        if (terms.isNotEmpty()) hasTerms = true
+                        importDictionary.importTerms(terms, dictionaryId)
+                    }
+                    fileName.matches(kanjiRegex) -> {
+                        val kanji = dictionaryParser.parseKanjiBank(dataJson, index.effectiveVersion)
+                        if (kanji.isNotEmpty()) hasKanji = true
+                        importDictionary.importKanji(kanji, dictionaryId)
+                    }
+                    fileName.matches(tagRegex) -> {
+                        val tags = dictionaryParser.parseTagBank(dataJson)
+                        importDictionary.importTags(tags, dictionaryId)
+                    }
                 }
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "Failed to parse $fileName" }
+                logcat(LogPriority.WARN, e) { "Failed to parse or import $fileName" }
             }
+
+            logcat(LogPriority.INFO) { "Successfully imported $fileName" }
         }
 
-        mutableState.update {
-            it.copy(importProgress = "Importing to database...")
-        }
+        if (!hasTerms) warnings.add("Dictionary contains no terms.")
+        if (!hasKanji) warnings.add("Dictionary contains no kanji.")
+        if (!hasTermMeta) warnings.add("Dictionary contains no term metadata.")
+        if (!hasKanjiMeta) warnings.add("Dictionary contains no kanji metadata.")
 
-        // Import to database
-        return importDictionary.import(
-            index = index,
-            tags = tags,
-            terms = terms,
-            kanji = kanji,
-            termMeta = termMeta,
-            kanjiMeta = kanjiMeta,
-        )
+        return dictionaryId to warnings
     }
 
     fun updateDictionary(dictionary: Dictionary) {
