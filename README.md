@@ -1,14 +1,13 @@
 <div align="center">
 
 <a href="#">
-    <img src="./.github/assets/logo.png" alt="Mihon logo" title="Mihon logo" width="80"/>
+    <img src="./.github/assets/logo.png" alt="MihonOCR logo" title="MihonOCR logo" width="80"/>
 </a>
 
 # Mihon [OCR](#)
 
 ### Full-featured reader
 Discover and read manga, webtoons, comics, and more – easier than ever on your Android device.
-(logo pending change)
 
 <!--
 [![Discord server](https://img.shields.io/discord/1195734228319617024.svg?label=&labelColor=6A7EC2&color=7389D8&logo=discord&logoColor=FFFFFF)](https://discord.gg/mihon)
