@@ -29,9 +29,10 @@ class DictionarySearchScreenModel(
     private val _events = Channel<Event>()
     val events: Flow<Event> = _events.receiveAsFlow()
 
-    init {
-        screenModelScope.launch {
-            loadDictionaries()
+    suspend fun refreshDictionaries() {
+        loadDictionaries()
+        if (mutableState.value.query.isNotBlank()) {
+            search()
         }
     }
 
