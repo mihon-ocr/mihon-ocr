@@ -113,6 +113,8 @@ fun DictionarySearchScreen(
                         dictionaries = state.dictionaries,
                         termMetaMap = state.termMetaMap,
                         onTermClick = onTermClick,
+                        onQueryChange = onQueryChange,
+                        onSearch = onSearch,
                     )
                 }
                 else -> {
@@ -157,6 +159,8 @@ private fun SearchResultsList(
     dictionaries: List<Dictionary>,
     termMetaMap: Map<String, List<DictionaryTermMeta>>,
     onTermClick: (DictionaryTerm) -> Unit,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -172,6 +176,8 @@ private fun SearchResultsList(
                 termMeta = termMetaMap[term.expression] ?: emptyList(),
                 dictionaries = dictionaries,
                 onClick = { onTermClick(term) },
+                onQueryChange = onQueryChange,
+                onSearch = onSearch,
             )
         }
     }
@@ -184,6 +190,8 @@ private fun DictionaryTermCard(
     termMeta: List<DictionaryTermMeta>,
     dictionaries: List<Dictionary>,
     onClick: () -> Unit,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -411,8 +419,8 @@ private fun DictionaryTermCard(
                                         start = offset,
                                         end = offset,
                                     ).firstOrNull()?.let { annotation ->
-                                        // TODO: Navigate to the referenced term
-                                        // onQueryChange(annotation.item)
+                                        onQueryChange(annotation.item)
+                                        onSearch()
                                     }
                                 },
                             )
