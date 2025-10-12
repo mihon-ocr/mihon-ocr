@@ -1,7 +1,7 @@
 <div align="center">
 
 <a href="#">
-    <img src="./.github/assets/logo.png" alt="MihonOCR logo" title="MihonOCR logo" width="80"/>
+    <img src="./.github/assets/logo.png" alt="MihonOCR logo" title="MihonOCR logo" width="128"/>
 </a>
 
 # Mihon [OCR](#)
