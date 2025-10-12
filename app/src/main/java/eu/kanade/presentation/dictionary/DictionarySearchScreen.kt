@@ -421,15 +421,6 @@ private fun DictionaryTermCard(
                 }
             }
 
-            if (formattedItems.size > 5) {
-                Text(
-                    text = stringResource(MR.strings.more_definitions, formattedItems.size - 5),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-
             // Dictionary source
             Spacer(modifier = Modifier.height(8.dp))
             Text(

@@ -1055,5 +1055,4 @@
     <string name="label_dictionary">Dictionary</string>
     <string name="label_dictionaries">Dictionaries</string>
     <string name="information_empty_dictionary_search">Search for terms in your dictionaries</string>
-    <string name="more_definitions">+%1$d more definitions</string>
 </resources>
