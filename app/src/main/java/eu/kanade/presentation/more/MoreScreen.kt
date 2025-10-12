@@ -126,7 +126,7 @@ fun MoreScreen(
             }
             item {
                 TextPreferenceWidget(
-                    title = stringResource(MR.strings.pref_category_dictionary),
+                    title = stringResource(MR.strings.pref_category_dictionaries),
                     icon = Icons.AutoMirrored.Outlined.LibraryBooks,
                     onPreferenceClick = onClickDictionary,
                 )

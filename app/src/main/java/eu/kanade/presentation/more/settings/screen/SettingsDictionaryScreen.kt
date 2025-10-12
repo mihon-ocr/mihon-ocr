@@ -103,7 +103,7 @@ object SettingsDictionaryScreen : Screen {
         Scaffold(
             topBar = {
                 AppBar(
-                    title = stringResource(MR.strings.pref_category_dictionary),
+                    title = stringResource(MR.strings.pref_category_dictionaries),
                     navigateUp = navigator::pop,
                     scrollBehavior = it,
                 )
