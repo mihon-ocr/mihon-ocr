@@ -281,7 +281,7 @@ private fun DictionaryTermCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.secondary,
                             fontStyle = FontStyle.Italic,
-                            modifier = Modifier.padding(bottom = 4.dp),
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
                         )
                     }
                     is FormattedGlossaryItem.Definition -> {
