@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.ui.dictionary
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.LibraryBooks
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -26,7 +26,7 @@ data object DictionaryTab : Tab {
             return TabOptions(
                 index = 5u,
                 title = stringResource(MR.strings.label_dictionary),
-                icon = rememberVectorPainter(Icons.Outlined.LibraryBooks),
+                icon = rememberVectorPainter(Icons.AutoMirrored.Outlined.LibraryBooks),
             )
         }
 
