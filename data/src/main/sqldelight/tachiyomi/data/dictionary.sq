@@ -148,7 +148,7 @@ searchTerms:
 SELECT T.*
 FROM dictionary_terms AS T
 JOIN dictionaries AS D ON T.dictionary_id = D._id
-WHERE (T.expression LIKE '%' || :query || '%' OR T.reading LIKE '%' || :query || '%')
+WHERE (T.expression LIKE :query OR T.reading LIKE :query)
   AND T.dictionary_id IN :dictionaryIds
   AND D.is_enabled = 1
 ORDER BY T.score DESC
