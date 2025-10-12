@@ -279,7 +279,7 @@ private fun DictionaryTermCard(
                         Text(
                             text = item.text,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.secondary,
+                            color = MaterialTheme.colorScheme.tertiary,
                             fontStyle = FontStyle.Italic,
                             modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
                         )
