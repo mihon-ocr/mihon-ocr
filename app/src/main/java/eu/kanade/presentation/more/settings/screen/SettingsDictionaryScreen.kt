@@ -43,8 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
-import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.presentation.util.LocalBackPress
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.tachiyomi.ui.setting.dictionary.DictionarySettingsScreenModel
 import eu.kanade.tachiyomi.util.system.toast
@@ -63,7 +63,7 @@ object SettingsDictionaryScreen : Screen {
     @Composable
     override fun Content() {
         val context = LocalContext.current
-        val navigator = LocalNavigator.currentOrThrow
+        val backPress = LocalBackPress.currentOrThrow
         val screenModel = rememberScreenModel { DictionarySettingsScreenModel() }
         val state by screenModel.state.collectAsState()
         val snackbarHostState = remember { SnackbarHostState() }
@@ -104,7 +104,7 @@ object SettingsDictionaryScreen : Screen {
             topBar = {
                 AppBar(
                     title = stringResource(MR.strings.pref_category_dictionaries),
-                    navigateUp = navigator::pop,
+                    navigateUp = backPress::invoke,
                     scrollBehavior = it,
                 )
             },
