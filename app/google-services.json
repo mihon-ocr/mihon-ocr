@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:347252887835:android:e1dd60ad5d4b83916543be",
+        "mobilesdk_app_id": "1:347252887835:android:8ff11bb9914ace6a6543be",
         "android_client_info": {
-          "package_name": "app.mihonOCR"
+          "package_name": "app.mihonocr"
         }
       },
       "oauth_client": [],
@@ -26,9 +26,28 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:347252887835:android:41296da15682ae646543be",
+        "mobilesdk_app_id": "1:347252887835:android:5f2b989f146eb1496543be",
         "android_client_info": {
-          "package_name": "app.mihonOCR.debug"
+          "package_name": "app.mihonocr.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAfmherIDe5iN53xInHGf_qtF8SMEGHQFg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:347252887835:android:c22a992d466ed2776543be",
+        "android_client_info": {
+          "package_name": "app.mihonocr.dev"
         }
       },
       "oauth_client": [],
