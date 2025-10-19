@@ -34,6 +34,8 @@ No releases at the moment! Stay tuned!
 
 <div align="left">
 
+* [OCR support](https://huggingface.co/bluolightning/manga-ocr-tflite) 
+* Partial Yomitan dictionary support.
 * Local reading of content.
 * A configurable reader with multiple viewers, reading directions and other settings.
 * Tracker support: [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/), [Kitsu](https://kitsu.app/), [MangaUpdates](https://mangaupdates.com), [Shikimori](https://shikimori.one), and [Bangumi](https://bgm.tv/) support.
