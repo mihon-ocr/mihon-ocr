@@ -48,6 +48,8 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.reader.DisplayRefreshHost
 import eu.kanade.presentation.reader.OrientationSelectDialog
 import eu.kanade.presentation.reader.PageIndicatorText
+import eu.kanade.presentation.reader.OcrResultBottomSheet
+import eu.kanade.presentation.reader.OcrSelectionOverlay
 import eu.kanade.presentation.reader.ReaderContentOverlay
 import eu.kanade.presentation.reader.ReaderPageActionsDialog
 import eu.kanade.presentation.reader.ReadingModeSelectDialog
@@ -232,6 +234,12 @@ class ReaderActivity : BaseActivity() {
                     }
                     is ReaderViewModel.Event.SetCoverResult -> {
                         onSetAsCoverResult(event.result)
+                    }
+                    ReaderViewModel.Event.OcrNoTextFound -> {
+                        toast(MR.strings.no_results_found)
+                    }
+                    ReaderViewModel.Event.OcrError -> {
+                        toast(MR.strings.error_unknown)
                     }
                 }
             }
@@ -421,7 +429,18 @@ class ReaderActivity : BaseActivity() {
                     menuToggleToast = toast(if (enabled) MR.strings.on else MR.strings.off)
                 },
                 onClickSettings = viewModel::openSettingsDialog,
+                onClickOcr = viewModel::enterOcrMode,
             )
+
+            // OCR selection overlay
+            if (state.ocrSelectionMode) {
+                OcrSelectionOverlay(
+                    onRegionSelected = { rect ->
+                        captureRegionAndProcessOcr(rect)
+                    },
+                    onCancel = viewModel::exitOcrMode,
+                )
+            }
 
             if (flashOnPageChange) {
                 DisplayRefreshHost(
@@ -430,7 +449,7 @@ class ReaderActivity : BaseActivity() {
             }
 
             val onDismissRequest = viewModel::closeDialog
-            when (state.dialog) {
+            when (val dialog = state.dialog) {
                 is ReaderViewModel.Dialog.Loading -> {
                     AlertDialog(
                         onDismissRequest = {},
@@ -482,6 +501,19 @@ class ReaderActivity : BaseActivity() {
                         onSetAsCover = viewModel::setAsCover,
                         onShare = viewModel::shareImage,
                         onSave = viewModel::saveImage,
+                    )
+                }
+                is ReaderViewModel.Dialog.OcrResult -> {
+                    OcrResultBottomSheet(
+                        onDismissRequest = onDismissRequest,
+                        text = dialog.text,
+                        onCopyText = {
+                            val clipboard = getSystemService<ClipboardManager>()
+                            clipboard?.setPrimaryClip(
+                                ClipData.newPlainText(null, dialog.text),
+                            )
+                            toast(MR.strings.action_copy_to_clipboard)
+                        },
                     )
                 }
                 null -> {}
@@ -686,6 +718,86 @@ class ReaderActivity : BaseActivity() {
      */
     fun onPageLongTap(page: ReaderPage) {
         viewModel.openPageDialog(page)
+    }
+
+    /**
+     * Captures a bitmap from the specified region and processes it with OCR.
+     */
+    private fun captureRegionAndProcessOcr(rect: android.graphics.RectF) {
+        lifecycleScope.launchIO {
+            try {
+                val viewer = viewModel.state.value.viewer ?: return@launchIO
+                val viewerContainer = binding.viewerContainer
+
+                // Create a bitmap of the viewer container
+                val bitmap = android.graphics.Bitmap.createBitmap(
+                    viewerContainer.width,
+                    viewerContainer.height,
+                    android.graphics.Bitmap.Config.ARGB_8888
+                )
+
+                // Use PixelCopy to capture hardware-accelerated content
+                val locationOnScreen = IntArray(2)
+                viewerContainer.getLocationOnScreen(locationOnScreen)
+
+                val window = (viewerContainer.context as? android.app.Activity)?.window
+                    ?: throw IllegalStateException("Unable to get window")
+
+                val srcRect = android.graphics.Rect(
+                    locationOnScreen[0],
+                    locationOnScreen[1],
+                    locationOnScreen[0] + viewerContainer.width,
+                    locationOnScreen[1] + viewerContainer.height
+                )
+
+                // Use a suspendCancellableCoroutine to wait for PixelCopy result
+                val copyResult = kotlinx.coroutines.suspendCancellableCoroutine<Int> { continuation ->
+                    android.view.PixelCopy.request(
+                        window,
+                        srcRect,
+                        bitmap,
+                        { copyResult ->
+                            continuation.resume(copyResult) {}
+                        },
+                        android.os.Handler(android.os.Looper.getMainLooper())
+                    )
+                }
+
+                if (copyResult != android.view.PixelCopy.SUCCESS) {
+                    bitmap.recycle()
+                    throw IllegalStateException("PixelCopy failed with result: $copyResult")
+                }
+
+                // Crop to the selected region
+                val left = rect.left.toInt().coerceIn(0, bitmap.width)
+                val top = rect.top.toInt().coerceIn(0, bitmap.height)
+                val width = (rect.width().toInt()).coerceIn(1, bitmap.width - left)
+                val height = (rect.height().toInt()).coerceIn(1, bitmap.height - top)
+
+                val regionBitmap = android.graphics.Bitmap.createBitmap(
+                    bitmap,
+                    left,
+                    top,
+                    width,
+                    height
+                )
+                val croppedBitmap = regionBitmap.copy(
+                    android.graphics.Bitmap.Config.ARGB_8888,
+                    /* mutable = */ false,
+                )
+                regionBitmap.recycle()
+                bitmap.recycle()
+
+                // Process OCR (the ViewModel takes ownership of the bitmap)
+                viewModel.processOcrRegion(croppedBitmap)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to capture region for OCR" }
+                withUIContext {
+                    viewModel.exitOcrMode()
+                    toast(MR.strings.action_cancel)
+                }
+            }
+        }
     }
 
     /**

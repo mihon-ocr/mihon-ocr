@@ -34,5 +34,8 @@ dependencies {
     implementation(projects.domain)
     implementation(projects.core.common)
 
+    // OCR
+    implementation(libs.litert)
+
     api(libs.bundles.sqldelight)
 }

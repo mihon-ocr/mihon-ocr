@@ -28,6 +28,7 @@ import eu.kanade.domain.track.interactor.TrackChapter
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.data.dictionary.DictionaryParserImpl
 import mihon.data.dictionary.DictionaryRepositoryImpl
+import mihon.data.ocr.OcrRepositoryImpl
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.dictionary.interactor.DictionaryInteractor
 import mihon.domain.dictionary.interactor.ImportDictionary
@@ -43,6 +44,8 @@ import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
 import mihon.domain.migration.usecases.MigrateMangaUseCase
+import mihon.domain.ocr.interactor.OcrProcessor
+import mihon.domain.ocr.repository.OcrRepository
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
@@ -216,5 +219,12 @@ class DomainModule : InjektModule {
         addFactory { DictionaryInteractor(get()) }
         addFactory { SearchDictionaryTerms(get()) }
         addFactory { ImportDictionary(get()) }
+        
+        addSingletonFactory<OcrRepository> {
+            OcrRepositoryImpl(
+                context = get()
+            )
+        }
+        addFactory { OcrProcessor(get()) }
     }
 }

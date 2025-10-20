@@ -14,3 +14,7 @@ local.properties
 
 # macOS specific files
 .DS_Store
+
+# OCR model files
+decoder.tflite
+encoder.tflite

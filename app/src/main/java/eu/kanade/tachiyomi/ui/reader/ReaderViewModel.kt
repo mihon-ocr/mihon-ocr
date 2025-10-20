@@ -40,7 +40,7 @@ import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.lang.takeBytes
 import eu.kanade.tachiyomi.util.storage.DiskUtil
-import eu.kanade.tachiyomi.util.storage.cacheImageDir
+import android.graphics.Bitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
+import mihon.data.ocr.di.OcrModule
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -102,6 +103,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private val setMangaViewerFlags: SetMangaViewerFlags = Injekt.get(),
     private val getIncognitoState: GetIncognitoState = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
+    private val application: Application = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -145,6 +147,10 @@ class ReaderViewModel @JvmOverloads constructor(
     private var chapterReadStartTime: Long? = null
 
     private var chapterToDownload: Download? = null
+
+    private val ocrProcessor by lazy {
+        OcrModule.provideOcrProcessor(application)
+    }
 
     private val unfilteredChapterList by lazy {
         val manga = manga!!
@@ -789,6 +795,41 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(dialog = null) }
     }
 
+    fun enterOcrMode() {
+        mutableState.update { it.copy(ocrSelectionMode = true, menuVisible = false) }
+    }
+
+    fun exitOcrMode() {
+        mutableState.update { it.copy(ocrSelectionMode = false) }
+    }
+
+    fun processOcrRegion(bitmap: Bitmap) {
+        viewModelScope.launchIO {
+            mutableState.update { it.copy(dialog = Dialog.Loading) }
+            try {
+                val text = ocrProcessor.getText(bitmap).trim()
+                withUIContext {
+                    if (text.isNotBlank()) {
+                        mutableState.update { it.copy(dialog = Dialog.OcrResult(text), ocrSelectionMode = false) }
+                    } else {
+                        mutableState.update { it.copy(dialog = null, ocrSelectionMode = false) }
+                        eventChannel.send(Event.OcrNoTextFound)
+                    }
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "OCR processing failed" }
+                withUIContext {
+                    mutableState.update { it.copy(dialog = null, ocrSelectionMode = false) }
+                    eventChannel.send(Event.OcrError)
+                }
+            } finally {
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+            }
+        }
+    }
+
     fun setBrightnessOverlayValue(value: Int) {
         mutableState.update { it.copy(brightnessOverlayValue = value) }
     }
@@ -850,14 +891,10 @@ class ReaderViewModel @JvmOverloads constructor(
         if (page?.status != Page.State.Ready) return
         val manga = manga ?: return
 
-        val context = Injekt.get<Application>()
-        val destDir = context.cacheImageDir
-
         val filename = generateFilename(manga, page)
 
-        try {
-            viewModelScope.launchNonCancellable {
-                destDir.deleteRecursively()
+        viewModelScope.launchNonCancellable {
+            try {
                 val uri = imageSaver.save(
                     image = Image.Page(
                         inputStream = page.stream!!,
@@ -866,9 +903,9 @@ class ReaderViewModel @JvmOverloads constructor(
                     ),
                 )
                 eventChannel.send(if (copyToClipboard) Event.CopyImage(uri) else Event.ShareImage(uri, page))
+            } catch (e: Throwable) {
+                logcat(LogPriority.ERROR, e)
             }
-        } catch (e: Throwable) {
-            logcat(LogPriority.ERROR, e)
         }
     }
 
@@ -960,6 +997,7 @@ class ReaderViewModel @JvmOverloads constructor(
         val viewer: Viewer? = null,
         val dialog: Dialog? = null,
         val menuVisible: Boolean = false,
+        val ocrSelectionMode: Boolean = false,
         @IntRange(from = -100, to = 100) val brightnessOverlayValue: Int = 0,
     ) {
         val currentChapter: ReaderChapter?
@@ -975,6 +1013,7 @@ class ReaderViewModel @JvmOverloads constructor(
         data object ReadingModeSelect : Dialog
         data object OrientationModeSelect : Dialog
         data class PageActions(val page: ReaderPage) : Dialog
+        data class OcrResult(val text: String) : Dialog
     }
 
     sealed interface Event {
@@ -986,5 +1025,7 @@ class ReaderViewModel @JvmOverloads constructor(
         data class SavedImage(val result: SaveImageResult) : Event
         data class ShareImage(val uri: Uri, val page: ReaderPage) : Event
         data class CopyImage(val uri: Uri) : Event
+        data object OcrNoTextFound : Event
+        data object OcrError : Event
     }
 }
