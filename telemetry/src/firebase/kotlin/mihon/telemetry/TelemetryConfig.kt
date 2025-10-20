@@ -35,6 +35,6 @@ object TelemetryConfig {
     }
 }
 
-private val MIHON_PACKAGES = hashSetOf("app.mihon", "app.mihon.debug")
+private val MIHON_PACKAGES = hashSetOf("app.mihonocr", "app.mihonocr.debug", "app.mihonocr.dev")
 private const val MIHON_CERTIFICATE_FINGERPRINT =
-    "9A:DD:65:5A:78:E9:6C:4E:C7:A5:3E:F8:9D:CC:B5:57:CB:5D:76:74:89:FA:C5:E7:85:D6:71:A5:A7:5D:4D:A2"
+    "47:94:5A:AD:F2:69:AD:6C:E3:E0:57:FE:96:E7:26:2A:41:17:CC:76:E3:47:4D:FE:B9:16:E2:CA:90:00:EE:D4"
