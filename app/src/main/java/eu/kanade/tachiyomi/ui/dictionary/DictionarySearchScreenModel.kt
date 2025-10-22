@@ -29,8 +29,23 @@ class DictionarySearchScreenModel(
     private val _events = Channel<Event>()
     val events: Flow<Event> = _events.receiveAsFlow()
 
+    // Simple LRU cache for search results (max 10 entries)
+    private val searchCache = object : LinkedHashMap<String, SearchCacheEntry>(20, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, SearchCacheEntry>): Boolean {
+            return size > 10
+        }
+    }
+
+    private data class SearchCacheEntry(
+        val results: List<DictionaryTerm>,
+        val termMetaMap: Map<String, List<DictionaryTermMeta>>,
+        val timestamp: Long = System.currentTimeMillis(),
+    )
+
     suspend fun refreshDictionaries() {
         loadDictionaries()
+        // Dictionary changes may invalidate cache
+        searchCache.clear()
         if (mutableState.value.query.isNotBlank()) {
             search()
         }
@@ -58,7 +73,6 @@ class DictionarySearchScreenModel(
 
     fun search() {
         val query = state.value.query
-        logcat(LogPriority.DEBUG) { "Search query: ${query}" }
         if (query.isBlank()) {
             mutableState.update { it.copy(searchResults = emptyList(), termMetaMap = emptyMap()) }
             return
@@ -75,12 +89,28 @@ class DictionarySearchScreenModel(
                     return@launch
                 }
 
-                val results = searchDictionaryTerms.search(query, enabledDictionaryIds)
-                logcat(LogPriority.DEBUG) { "Search query results: ${results}" }
+                val cacheKey = "$query|${enabledDictionaryIds.joinToString(",")}"
 
-                // Fetch term meta (frequency data) for all results
+                // Check cache before searching
+                val cachedEntry = searchCache[cacheKey]
+                if (cachedEntry != null) {
+                    logcat(LogPriority.DEBUG) { "Using cached results for: $query" }
+                    mutableState.update {
+                        it.copy(
+                            searchResults = cachedEntry.results,
+                            termMetaMap = cachedEntry.termMetaMap,
+                            isSearching = false,
+                            hasSearched = true,
+                        )
+                    }
+                }
+
+                // Fetch term results and meta (frequency data) for all results
+                val results = searchDictionaryTerms.search(query, enabledDictionaryIds)
                 val expressions = results.map { it.expression }.distinct()
                 val termMetaMap = searchDictionaryTerms.getTermMeta(expressions, enabledDictionaryIds)
+
+                searchCache[cacheKey] = SearchCacheEntry(results, termMetaMap)
 
                 mutableState.update {
                     it.copy(
