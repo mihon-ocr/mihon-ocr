@@ -90,16 +90,6 @@ object SettingsDictionaryScreen : Screen {
             }
         }
 
-        // Show success messages
-        LaunchedEffect(state.successMessage) {
-            state.successMessage?.let { message ->
-                scope.launch {
-                    snackbarHostState.showSnackbar(message)
-                    screenModel.clearSuccessMessage()
-                }
-            }
-        }
-
         Scaffold(
             topBar = {
                 AppBar(
@@ -175,7 +165,7 @@ object SettingsDictionaryScreen : Screen {
                     )
                 } else if (state.dictionaries.isEmpty()) {
                     Text(
-                        text = stringResource(MR.strings.information_no_recent),
+                        text = stringResource(MR.strings.no_dictionaries),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 32.dp),
@@ -197,10 +187,10 @@ object SettingsDictionaryScreen : Screen {
                             DictionaryItem(
                                 dictionary = dictionary,
                                 onToggleEnabled = { enabled ->
-                                    screenModel.updateDictionary(dictionary.copy(isEnabled = enabled))
+                                    screenModel.updateDictionary(context, dictionary.copy(isEnabled = enabled))
                                 },
                                 onDelete = {
-                                    screenModel.deleteDictionary(dictionary.id)
+                                    screenModel.deleteDictionary(context, dictionary.id)
                                 },
                             )
                         }

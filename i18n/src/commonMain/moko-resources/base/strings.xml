@@ -1044,9 +1044,15 @@
     <!-- Dictionary Related -->
     <string name="pref_category_dictionaries">Dictionaries</string>
     <string name="dictionary_import_success">Dictionary Successfully Imported</string>
+    <string name="dictionary_import_fail">Dictionary Import Failed</string>
     <string name="import_dictionary">Import Dictionary</string>
     <string name="importing_dictionary">Importing Dictionary</string>
     <string name="installed_dictionaries">Installed Dictionaries</string>
+    <string name="no_dictionaries">No Dictionaries Installed</string>
+    <string name="dictionary_delete_success">Dictionary Successfully Deleted</string>
+    <string name="dictionary_delete_fail">Dictionary Deletion Failed</string>
+    <string name="dictionary_update_success">Dictionary Successfully Updated</string>
+    <string name="dictionary_update_fail">Dictionary Update Failed</string>
     <string name="dictionary_info">Dictionary Info</string>
     <string name="label_version">Version</string>
     <string name="label_author">Author</string>

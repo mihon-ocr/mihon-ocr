@@ -63,7 +63,7 @@ class DictionarySettingsScreenModel(
             mutableState.update { it.copy(isImporting = true, importProgress = null, error = null) }
 
             try {
-                val result = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     val file = UniFile.fromUri(context, uri)
                         ?: throw DictionaryImportException("Failed to open dictionary file")
 
@@ -77,34 +77,30 @@ class DictionarySettingsScreenModel(
                     }
                 }
 
+                context.toast(MR.strings.dictionary_import_success.getString(context))
                 mutableState.update {
                     it.copy(
                         isImporting = false,
                         importProgress = null,
-                        successMessage = MR.strings.dictionary_import_success.getString(context),
                     )
-                }
-
-                result.second.forEach { warning ->
-                    context.toast(warning)
                 }
 
                 // Reload dictionaries
                 loadDictionaries()
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to import dictionary" }
+                context.toast(e.message ?: MR.strings.dictionary_import_fail.getString(context))
                 mutableState.update {
                     it.copy(
                         isImporting = false,
                         importProgress = null,
-                        error = e.message ?: "Failed to import dictionary",
                     )
                 }
             }
         }
     }
 
-    private suspend fun extractAndImportDictionary(reader: ArchiveReader): Pair<Long, List<String>> {
+    private suspend fun extractAndImportDictionary(reader: ArchiveReader) {
         mutableState.update { it.copy(importProgress = "Reading index.json...") }
 
         // Parse index.json
@@ -120,7 +116,6 @@ class DictionarySettingsScreenModel(
         mutableState.update { it.copy(importProgress = "Importing dictionary info...") }
 
         val dictionaryId = importDictionary.createDictionary(index)
-        val warnings = mutableListOf<String>()
 
         importDictionary.importIndexTags(index, dictionaryId)
 
@@ -131,11 +126,6 @@ class DictionarySettingsScreenModel(
         val kanjiRegex = Regex("^kanji_bank_\\d+\\.json$")
         val termMetaRegex = Regex("^term_meta_bank_\\d+\\.json$")
         val kanjiMetaRegex = Regex("^kanji_meta_bank_\\d+\\.json$")
-
-        var hasTerms = false
-        var hasKanji = false
-        var hasTermMeta = false
-        var hasKanjiMeta = false
 
         reader.useEntriesAndStreams { entry, stream ->
             if (!entry.isFile) return@useEntriesAndStreams
@@ -152,22 +142,18 @@ class DictionarySettingsScreenModel(
                 when {
                     fileName.matches(termMetaRegex) -> {
                         val termMeta = dictionaryParser.parseTermMetaBank(dataJson)
-                        if (termMeta.isNotEmpty()) hasTermMeta = true
                         importDictionary.importTermMeta(termMeta, dictionaryId)
                     }
                     fileName.matches(kanjiMetaRegex) -> {
                         val kanjiMeta = dictionaryParser.parseKanjiMetaBank(dataJson)
-                        if (kanjiMeta.isNotEmpty()) hasKanjiMeta = true
                         importDictionary.importKanjiMeta(kanjiMeta, dictionaryId)
                     }
                     fileName.matches(termRegex) -> {
                         val terms = dictionaryParser.parseTermBank(dataJson, index.effectiveVersion)
-                        if (terms.isNotEmpty()) hasTerms = true
                         importDictionary.importTerms(terms, dictionaryId)
                     }
                     fileName.matches(kanjiRegex) -> {
                         val kanji = dictionaryParser.parseKanjiBank(dataJson, index.effectiveVersion)
-                        if (kanji.isNotEmpty()) hasKanji = true
                         importDictionary.importKanji(kanji, dictionaryId)
                     }
                     fileName.matches(tagRegex) -> {
@@ -181,49 +167,36 @@ class DictionarySettingsScreenModel(
 
             logcat(LogPriority.INFO) { "Successfully imported $fileName" }
         }
-
-        if (!hasTerms) warnings.add("Dictionary contains no terms.")
-        if (!hasKanji) warnings.add("Dictionary contains no kanji.")
-        if (!hasTermMeta) warnings.add("Dictionary contains no term metadata.")
-        if (!hasKanjiMeta) warnings.add("Dictionary contains no kanji metadata.")
-
-        return dictionaryId to warnings
     }
 
-    fun updateDictionary(dictionary: Dictionary) {
+    fun updateDictionary(context: Context, dictionary: Dictionary) {
         screenModelScope.launch {
             try {
                 dictionaryInteractor.updateDictionary(dictionary)
                 loadDictionaries()
+                context.toast(MR.strings.dictionary_update_success.getString(context))
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to update dictionary" }
-                mutableState.update {
-                    it.copy(error = e.message ?: "Failed to update dictionary")
-                }
+                context.toast(e.message ?: MR.strings.dictionary_update_fail.getString(context))
             }
         }
     }
 
-    fun deleteDictionary(dictionaryId: Long) {
+    fun deleteDictionary(context: Context, dictionaryId: Long) {
         screenModelScope.launch {
             try {
                 dictionaryInteractor.deleteDictionary(dictionaryId)
                 loadDictionaries()
+                context.toast(MR.strings.dictionary_delete_success.getString(context))
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to delete dictionary" }
-                mutableState.update {
-                    it.copy(error = e.message ?: "Failed to delete dictionary")
-                }
+                context.toast(e.message ?: MR.strings.dictionary_delete_fail.getString(context))
             }
         }
     }
 
     fun clearError() {
         mutableState.update { it.copy(error = null) }
-    }
-
-    fun clearSuccessMessage() {
-        mutableState.update { it.copy(successMessage = null) }
     }
 
     @Immutable
@@ -233,6 +206,5 @@ class DictionarySettingsScreenModel(
         val isImporting: Boolean = false,
         val importProgress: String? = null,
         val error: String? = null,
-        val successMessage: String? = null,
     )
 }
