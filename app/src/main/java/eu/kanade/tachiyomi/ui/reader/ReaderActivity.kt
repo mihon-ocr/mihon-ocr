@@ -14,6 +14,8 @@ import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View.LAYER_TYPE_HARDWARE
@@ -102,6 +104,8 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
+import androidx.core.graphics.createBitmap
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 class ReaderActivity : BaseActivity() {
 
@@ -726,67 +730,37 @@ class ReaderActivity : BaseActivity() {
     private fun captureRegionAndProcessOcr(rect: android.graphics.RectF) {
         lifecycleScope.launchIO {
             try {
-                val viewer = viewModel.state.value.viewer ?: return@launchIO
                 val viewerContainer = binding.viewerContainer
 
-                // Create a bitmap of the viewer container
-                val bitmap = android.graphics.Bitmap.createBitmap(
-                    viewerContainer.width,
-                    viewerContainer.height,
-                    android.graphics.Bitmap.Config.ARGB_8888
-                )
+                val location = IntArray(2)
+                viewerContainer.getLocationOnScreen(location)
+                val (containerX,containerY) = location
 
-                // Use PixelCopy to capture hardware-accelerated content
-                val locationOnScreen = IntArray(2)
-                viewerContainer.getLocationOnScreen(locationOnScreen)
 
-                val window = (viewerContainer.context as? android.app.Activity)?.window
-                    ?: throw IllegalStateException("Unable to get window")
+                // Crop to the selected region
+                val left = (containerX + rect.left.toInt()).coerceAtLeast(0)
+                val top = (containerY + rect.top.toInt()).coerceAtLeast(0)
+                val width = (rect.width().toInt()).coerceAtLeast(1)
+                val height = (rect.height().toInt()).coerceAtLeast(1)
 
-                val srcRect = android.graphics.Rect(
-                    locationOnScreen[0],
-                    locationOnScreen[1],
-                    locationOnScreen[0] + viewerContainer.width,
-                    locationOnScreen[1] + viewerContainer.height
-                )
+                val croppedBitmap = createBitmap(width, height)
 
-                // Use a suspendCancellableCoroutine to wait for PixelCopy result
-                val copyResult = kotlinx.coroutines.suspendCancellableCoroutine<Int> { continuation ->
+                val srcRect = android.graphics.Rect(left, top, left + width, top + height)
+
+                val copyResult = suspendCancellableCoroutine { continuation ->
                     android.view.PixelCopy.request(
                         window,
                         srcRect,
-                        bitmap,
-                        { copyResult ->
-                            continuation.resume(copyResult) {}
-                        },
-                        android.os.Handler(android.os.Looper.getMainLooper())
+                        croppedBitmap,
+                        { result -> continuation.resume(result) { cause, _, _ -> } },
+                        Handler(Looper.getMainLooper())
                     )
                 }
 
                 if (copyResult != android.view.PixelCopy.SUCCESS) {
-                    bitmap.recycle()
+                    croppedBitmap.recycle()
                     throw IllegalStateException("PixelCopy failed with result: $copyResult")
                 }
-
-                // Crop to the selected region
-                val left = rect.left.toInt().coerceIn(0, bitmap.width)
-                val top = rect.top.toInt().coerceIn(0, bitmap.height)
-                val width = (rect.width().toInt()).coerceIn(1, bitmap.width - left)
-                val height = (rect.height().toInt()).coerceIn(1, bitmap.height - top)
-
-                val regionBitmap = android.graphics.Bitmap.createBitmap(
-                    bitmap,
-                    left,
-                    top,
-                    width,
-                    height
-                )
-                val croppedBitmap = regionBitmap.copy(
-                    android.graphics.Bitmap.Config.ARGB_8888,
-                    /* mutable = */ false,
-                )
-                regionBitmap.recycle()
-                bitmap.recycle()
 
                 // Process OCR (the ViewModel takes ownership of the bitmap)
                 viewModel.processOcrRegion(croppedBitmap)
