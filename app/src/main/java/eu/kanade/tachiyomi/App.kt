@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -213,6 +214,15 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 
     override fun onStop(owner: LifecycleOwner) {
         SecureActivityDelegate.onApplicationStopped()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // Release OCR resources when system is under memory pressure
+        if (level >= TRIM_MEMORY_BACKGROUND) {
+            logcat(LogPriority.INFO) { "Cleaning up OCR resources due to memory pressure" }
+            mihon.data.ocr.di.OcrModule.cleanup()
+        }
     }
 
     override fun getPackageName(): String {

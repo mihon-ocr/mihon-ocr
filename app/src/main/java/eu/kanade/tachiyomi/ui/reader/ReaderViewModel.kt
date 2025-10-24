@@ -258,6 +258,10 @@ class ReaderViewModel @JvmOverloads constructor(
                 downloadManager.addDownloadsToStartOfQueue(listOf(it))
             }
         }
+        // Clean up OCR resources when ViewModel is cleared
+        // Already checks if resources are initialized
+        OcrModule.cleanup()
+        super.onCleared()
     }
 
     /**

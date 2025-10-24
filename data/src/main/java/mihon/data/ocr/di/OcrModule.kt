@@ -34,7 +34,12 @@ object OcrModule {
     }
 
     fun cleanup() {
-        (ocrRepository as? OcrRepositoryImpl)?.close()
-        ocrRepository = null
+        synchronized(this) {
+            val repository = ocrRepository
+            if (repository != null) {
+                (repository as? OcrRepositoryImpl)?.close()
+                ocrRepository = null
+            }
+        }
     }
 }
