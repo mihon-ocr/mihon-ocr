@@ -127,6 +127,8 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-24.04
     needs: [get_tag, build, build_foss]
+    permissions:
+      contents: write
 
     steps:
       - name: Download all artifacts
@@ -168,4 +170,4 @@ jobs:
             mihonocr-x86_64-${{ needs.get_tag.outputs.tag }}.apk
           draft: true
           prerelease: false
-          token: ${{ secrets.MIHONOCR_BOT_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
