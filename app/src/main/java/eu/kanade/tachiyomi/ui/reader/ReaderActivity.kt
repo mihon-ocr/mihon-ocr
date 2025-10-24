@@ -23,7 +23,10 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -31,6 +34,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
 import androidx.core.graphics.ColorUtils
@@ -50,6 +54,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.reader.DisplayRefreshHost
 import eu.kanade.presentation.reader.OrientationSelectDialog
 import eu.kanade.presentation.reader.PageIndicatorText
+import eu.kanade.presentation.reader.OcrLoadingIndicator
 import eu.kanade.presentation.reader.OcrResultBottomSheet
 import eu.kanade.presentation.reader.OcrSelectionOverlay
 import eu.kanade.presentation.reader.ReaderContentOverlay
@@ -370,29 +375,30 @@ class ReaderActivity : BaseActivity() {
                 return@setComposeContent
             }
 
-            val isHttpSource = viewModel.getSource() is HttpSource
-            val isFullscreen by readerPreferences.fullscreen().collectAsState()
-            val flashOnPageChange by readerPreferences.flashOnPageChange().collectAsState()
+            Box(modifier = Modifier.fillMaxSize()) {
+                val isHttpSource = viewModel.getSource() is HttpSource
+                val isFullscreen by readerPreferences.fullscreen().collectAsState()
+                val flashOnPageChange by readerPreferences.flashOnPageChange().collectAsState()
 
-            val colorOverlayEnabled by readerPreferences.colorFilter().collectAsState()
-            val colorOverlay by readerPreferences.colorFilterValue().collectAsState()
-            val colorOverlayMode by readerPreferences.colorFilterMode().collectAsState()
-            val colorOverlayBlendMode = remember(colorOverlayMode) {
-                ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
-            }
+                val colorOverlayEnabled by readerPreferences.colorFilter().collectAsState()
+                val colorOverlay by readerPreferences.colorFilterValue().collectAsState()
+                val colorOverlayMode by readerPreferences.colorFilterMode().collectAsState()
+                val colorOverlayBlendMode = remember(colorOverlayMode) {
+                    ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
+                }
 
-            val cropBorderPaged by readerPreferences.cropBorders().collectAsState()
-            val cropBorderWebtoon by readerPreferences.cropBordersWebtoon().collectAsState()
-            val isPagerType = ReadingMode.isPagerType(viewModel.getMangaReadingMode())
-            val cropEnabled = if (isPagerType) cropBorderPaged else cropBorderWebtoon
+                val cropBorderPaged by readerPreferences.cropBorders().collectAsState()
+                val cropBorderWebtoon by readerPreferences.cropBordersWebtoon().collectAsState()
+                val isPagerType = ReadingMode.isPagerType(viewModel.getMangaReadingMode())
+                val cropEnabled = if (isPagerType) cropBorderPaged else cropBorderWebtoon
 
-            ReaderContentOverlay(
-                brightness = state.brightnessOverlayValue,
-                color = colorOverlay.takeIf { colorOverlayEnabled },
-                colorBlendMode = colorOverlayBlendMode,
-            )
+                ReaderContentOverlay(
+                    brightness = state.brightnessOverlayValue,
+                    color = colorOverlay.takeIf { colorOverlayEnabled },
+                    colorBlendMode = colorOverlayBlendMode,
+                )
 
-            ReaderAppBars(
+                ReaderAppBars(
                 visible = state.menuVisible,
                 fullscreen = isFullscreen,
 
@@ -521,6 +527,13 @@ class ReaderActivity : BaseActivity() {
                     )
                 }
                 null -> {}
+            }
+
+            // OCR loading bar at bottom of screen
+            OcrLoadingIndicator(
+                visible = state.isProcessingOcr,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
             }
         }
 

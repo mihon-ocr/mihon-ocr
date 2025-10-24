@@ -809,21 +809,21 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun processOcrRegion(bitmap: Bitmap) {
         viewModelScope.launchIO {
-            mutableState.update { it.copy(dialog = Dialog.Loading) }
+                mutableState.update { it.copy(isProcessingOcr = true, ocrSelectionMode = false) }
             try {
                 val text = ocrProcessor.getText(bitmap).trim()
                 withUIContext {
                     if (text.isNotBlank()) {
-                        mutableState.update { it.copy(dialog = Dialog.OcrResult(text), ocrSelectionMode = false) }
+                        mutableState.update { it.copy(dialog = Dialog.OcrResult(text), isProcessingOcr = false) }
                     } else {
-                        mutableState.update { it.copy(dialog = null, ocrSelectionMode = false) }
+                        mutableState.update { it.copy(isProcessingOcr = false) }
                         eventChannel.send(Event.OcrNoTextFound)
                     }
                 }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "OCR processing failed" }
                 withUIContext {
-                    mutableState.update { it.copy(dialog = null, ocrSelectionMode = false) }
+                    mutableState.update { it.copy(isProcessingOcr = false) }
                     eventChannel.send(Event.OcrError)
                 }
             } finally {
@@ -1002,6 +1002,7 @@ class ReaderViewModel @JvmOverloads constructor(
         val dialog: Dialog? = null,
         val menuVisible: Boolean = false,
         val ocrSelectionMode: Boolean = false,
+        val isProcessingOcr: Boolean = false,
         @IntRange(from = -100, to = 100) val brightnessOverlayValue: Int = 0,
     ) {
         val currentChapter: ReaderChapter?
