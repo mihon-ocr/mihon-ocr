@@ -189,7 +189,7 @@ private fun SearchResultsList(
 }
 
 @Composable
-private fun DictionaryTermCard(
+internal fun DictionaryTermCard(
     term: DictionaryTerm,
     dictionaryName: String,
     termMeta: List<DictionaryTermMeta>,
