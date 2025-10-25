@@ -1,9 +1,12 @@
 package eu.kanade.presentation.dictionary
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -202,55 +207,60 @@ private fun DictionaryTermCard(
         Column(
             modifier = Modifier.padding(16.dp),
         ) {
-            // Expression and reading
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = term.expression,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    if (term.reading.isNotBlank() && term.reading != term.expression) {
-                        Text(
-                            text = term.reading,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(
+                text = term.expression,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            if (term.reading.isNotBlank() && term.reading != term.expression) {
+                Text(
+                    text = term.reading,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Spacer(Modifier.size(6.dp))
+
+            // Display frequency indicator if available
+            val frequencyData = remember(termMeta) {
+                FrequencyFormatter.parseFrequencies(termMeta)
+            }
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                frequencyData.take(16).forEach { freqInfo ->
+                    // Find the dictionary name for the frequency entry
+                    val sourceDictName = dictionaries.find { it.id == freqInfo.dictionaryId }?.title
+                        ?: dictionaryName
+
+                    val clipShape = remember { RoundedCornerShape(8.dp) }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline,
+                            shape = clipShape,
                         )
-                    }
-                }
+                        .clip(clipShape)
+                    ) {
+                        Text(
+                            text = sourceDictName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
 
-                // Display frequency indicator if available
-                val frequencyData = remember(termMeta) {
-                    FrequencyFormatter.parseFrequencies(termMeta)
-                }
-
-                Column(
-                    horizontalAlignment = Alignment.End,
-                ) {
-                    frequencyData.take(3).forEach { freqInfo ->
-                        // Find the dictionary name for the frequency entry
-                        val sourceDictName = dictionaries.find { it.id == freqInfo.dictionaryId }?.title
-                            ?: dictionaryName
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = freqInfo.frequency,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-
-                            Spacer(modifier = Modifier.size(6.dp))
-
-                            Text(
-                                text = sourceDictName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        Text(
+                            text = freqInfo.frequency,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
                     }
                 }
             }
@@ -260,7 +270,6 @@ private fun DictionaryTermCard(
             // Check if this is a "forms" entry - if so, show it differently
             val isFormsEntry = term.definitionTags?.contains("forms") == true
 
-            // Parse and display glossary content
             val glossaryData = remember(term.glossary, isFormsEntry) {
                 GlossaryFormatter.parseGlossary(term.glossary, isFormsEntry)
             }
