@@ -528,8 +528,9 @@ class ReaderActivity : BaseActivity() {
                         text = dialog.text,
                         onCopyText = {
                             val clipboard = getSystemService<ClipboardManager>()
+                            val currentQuery = dictionarySearchScreenModel.state.value.query
                             clipboard?.setPrimaryClip(
-                                ClipData.newPlainText(null, dialog.text),
+                                ClipData.newPlainText(null, currentQuery),
                             )
                             toast(MR.strings.action_copy_to_clipboard)
                         },
