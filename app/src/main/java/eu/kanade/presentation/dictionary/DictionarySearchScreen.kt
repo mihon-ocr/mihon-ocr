@@ -89,7 +89,6 @@ fun DictionarySearchScreen(
                 query = state.query,
                 onQueryChange = onQueryChange,
                 onSearch = onSearch,
-                isSearching = state.isSearching,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
@@ -139,11 +138,10 @@ fun DictionarySearchScreen(
 }
 
 @Composable
-private fun SearchBar(
+internal fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
-    isSearching: Boolean,
     modifier: Modifier = Modifier,
 ) {
     OutlinedTextField(
@@ -152,11 +150,6 @@ private fun SearchBar(
         modifier = modifier.fillMaxWidth(),
         placeholder = { Text(stringResource(MR.strings.action_search)) },
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-        trailingIcon = {
-            if (isSearching) {
-                CircularProgressIndicator(modifier = Modifier.padding(8.dp))
-            }
-        },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { onSearch() }),
@@ -194,7 +187,7 @@ private fun SearchResultsList(
 }
 
 @Composable
-private fun DictionaryTermCard(
+internal fun DictionaryTermCard(
     term: DictionaryTerm,
     dictionaryName: String,
     termMeta: List<DictionaryTermMeta>,
@@ -249,7 +242,7 @@ private fun DictionaryTermCard(
                             color = MaterialTheme.colorScheme.outline,
                             shape = clipShape,
                         )
-                        .clip(clipShape)
+                            .clip(clipShape)
                     ) {
                         Text(
                             text = sourceDictName,

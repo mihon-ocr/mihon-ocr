@@ -1067,7 +1067,6 @@
     <!-- OCR Related -->
     <string name="action_ocr">OCR text recognition</string>
     <string name="action_copy">Copy</string>
-    <string name="ocr_result_title">Recognized Text</string>
     <string name="ocr_select_region">Drag to select text region</string>
     <string name="ocr_processing">Processing OCR…</string>
     <string name="error_unknown">Unknown OCR Error Occurred</string>

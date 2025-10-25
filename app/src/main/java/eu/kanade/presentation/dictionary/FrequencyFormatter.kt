@@ -15,8 +15,8 @@ import logcat.LogPriority
  */
 data class FrequencyData(
     val reading: String,
-    val frequency: String, // Changed to String to support "very common" etc.
-    val numericFrequency: Int?, // For sorting purposes
+    val frequency: String,
+    val numericFrequency: Int?,
     val dictionaryId: Long,
 )
 
@@ -34,25 +34,18 @@ object FrequencyFormatter {
             .filter { it.mode == TermMetaMode.FREQUENCY }
             .mapNotNull { parseFrequency(it) }
 
-        // Return all frequencies sorted by numeric value (lowest = most common)
+        // Return all frequencies sorted by numeric value (lowest first)
         return frequencies.sortedBy { it.numericFrequency ?: Int.MAX_VALUE }
     }
 
     /**
      * Parse a single frequency entry.
-     * Handles multiple formats:
-     * - Simple number: 23500
-     * - Simple string: "very common"
-     * - Object with value/displayValue: {"value": 18000, "displayValue": "Common Word"}
-     * - Object with reading: {"reading": "せい", "frequency": 3500}
-     * - Object with reading and nested frequency: {"reading": "なま", "frequency": {"value": 12000, "displayValue": "Frequent"}}
      */
     private fun parseFrequency(termMeta: DictionaryTermMeta): FrequencyData? {
         return try {
             val element = json.parseToJsonElement(termMeta.data)
 
             when {
-                // Simple number
                 element is JsonPrimitive && element.isString.not() -> {
                     val freq = element.intOrNull ?: return null
                     FrequencyData(
@@ -63,7 +56,6 @@ object FrequencyFormatter {
                     )
                 }
 
-                // Simple string
                 element is JsonPrimitive && element.isString -> {
                     val freqStr = element.content
                     FrequencyData(
@@ -74,7 +66,6 @@ object FrequencyFormatter {
                     )
                 }
 
-                // Object - need to determine which structure
                 element is JsonObject -> {
                     parseFrequencyObject(element, termMeta.dictionaryId)
                 }
@@ -88,10 +79,7 @@ object FrequencyFormatter {
     }
 
     private fun parseFrequencyObject(obj: JsonObject, dictionaryId: Long): FrequencyData? {
-        // Check if this has a "reading" field
         val reading = obj["reading"]?.jsonPrimitive?.content ?: ""
-
-        // Check if this has a "frequency" field
         val frequencyElement = obj["frequency"]
 
         return when {

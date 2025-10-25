@@ -26,10 +26,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -371,6 +371,15 @@ class ReaderActivity : BaseActivity() {
                 )
             }
 
+            val dictionarySearchScreenModel = remember {
+                eu.kanade.tachiyomi.ui.dictionary.DictionarySearchScreenModel()
+            }
+
+            // Initialize dictionary search model
+            LaunchedEffect(Unit) {
+                dictionarySearchScreenModel.refreshDictionaries()
+            }
+
             if (!ifSourcesLoaded()) {
                 return@setComposeContent
             }
@@ -519,11 +528,13 @@ class ReaderActivity : BaseActivity() {
                         text = dialog.text,
                         onCopyText = {
                             val clipboard = getSystemService<ClipboardManager>()
+                            val currentQuery = dictionarySearchScreenModel.state.value.query
                             clipboard?.setPrimaryClip(
-                                ClipData.newPlainText(null, dialog.text),
+                                ClipData.newPlainText(null, currentQuery),
                             )
                             toast(MR.strings.action_copy_to_clipboard)
                         },
+                        searchScreenModel = dictionarySearchScreenModel,
                     )
                 }
                 null -> {}
