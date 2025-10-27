@@ -57,6 +57,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import mihon.data.ocr.di.OcrModule
+import mihon.domain.ocr.interactor.OcrProcessor
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -148,9 +149,8 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private var chapterToDownload: Download? = null
 
-    private val ocrProcessor by lazy {
-        OcrModule.provideOcrProcessor(application)
-    }
+    private val ocrProcessor: OcrProcessor
+        get() = OcrModule.provideOcrProcessor(application)
 
     private val unfilteredChapterList by lazy {
         val manga = manga!!
