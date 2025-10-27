@@ -1068,4 +1068,5 @@
     <string name="ocr_select_region">Drag to select text region</string>
     <string name="ocr_processing">Processing OCR…</string>
     <string name="error_unknown">Unknown OCR Error Occurred</string>
+    <string name="ocr_memory_error">Out of memory when running OCR</string>
 </resources>

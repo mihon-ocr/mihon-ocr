@@ -820,6 +820,20 @@ class ReaderViewModel @JvmOverloads constructor(
                         eventChannel.send(Event.OcrNoTextFound)
                     }
                 }
+            } catch (e: CancellationException) {
+                // Handle coroutine cancellation (e.g., user navigates away)
+                logcat(LogPriority.DEBUG) { "OCR processing cancelled" }
+                withUIContext {
+                    mutableState.update { it.copy(isProcessingOcr = false) }
+                }
+                // Re-throw to properly handle cancellation
+                throw e
+            } catch (e: OutOfMemoryError) {
+                logcat(LogPriority.ERROR, e) { "Out of memory during OCR processing" }
+                withUIContext {
+                    mutableState.update { it.copy(isProcessingOcr = false) }
+                    eventChannel.send(Event.OcrMemoryError)
+                }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "OCR processing failed" }
                 withUIContext {
@@ -1031,6 +1045,7 @@ class ReaderViewModel @JvmOverloads constructor(
         data class ShareImage(val uri: Uri, val page: ReaderPage) : Event
         data class CopyImage(val uri: Uri) : Event
         data object OcrNoTextFound : Event
+        data object OcrMemoryError: Event
         data object OcrError : Event
     }
 }

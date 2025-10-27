@@ -247,6 +247,9 @@ class ReaderActivity : BaseActivity() {
                     ReaderViewModel.Event.OcrNoTextFound -> {
                         toast(MR.strings.no_results_found)
                     }
+                    ReaderViewModel.Event.OcrMemoryError -> {
+                        toast(MR.strings.ocr_memory_error)
+                    }
                     ReaderViewModel.Event.OcrError -> {
                         toast(MR.strings.error_unknown)
                     }
