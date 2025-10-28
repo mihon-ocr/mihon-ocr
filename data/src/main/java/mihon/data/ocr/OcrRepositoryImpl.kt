@@ -2,6 +2,7 @@ package mihon.data.ocr
 
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.core.graphics.scale
 import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import com.google.ai.edge.litert.TensorBuffer
@@ -10,7 +11,6 @@ import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import mihon.domain.ocr.repository.OcrRepository
-import androidx.core.graphics.scale
 
 class OcrRepositoryImpl(
     context: Context,
@@ -20,12 +20,18 @@ class OcrRepositoryImpl(
     private val encoderModel: CompiledModel
     private val decoderModel: CompiledModel
     private val textPostprocessor: TextPostprocessor
-    private val maxSequenceLength: Int
+    private val encoderInputBuffers: List<TensorBuffer>
+    private val encoderOutputBuffers: List<TensorBuffer>
+    private val decoderInputBuffers: List<TensorBuffer>
+    private val decoderOutputBuffers: List<TensorBuffer>
+    private val inputIdsArray: LongArray = LongArray(MAX_SEQUENCE_LENGTH)
 
     companion object {
         private const val IMAGE_SIZE = 224
         private const val NORMALIZATION_MEAN = 0.5f
         private const val NORMALIZATION_STD = 0.5f
+        private const val NORMALIZATION_FACTOR = 1.0f / (255.0f * NORMALIZATION_STD)
+        private const val NORMALIZED_MEAN = NORMALIZATION_MEAN / NORMALIZATION_STD
         private const val START_TOKEN_ID = 2
         private const val END_TOKEN_ID = 3
         private const val PAD_TOKEN_ID = 0
@@ -35,282 +41,236 @@ class OcrRepositoryImpl(
     }
 
     init {
-        val options = CompiledModel.Options(Accelerator.CPU)
+        val encoderOptions = CompiledModel.Options(Accelerator.CPU)
+        val decoderOptions = CompiledModel.Options(Accelerator.CPU)
 
         encoderModel = CompiledModel.create(
             context.assets,
             encoderModelPath,
-            options,
+            encoderOptions,
         )
 
         decoderModel = CompiledModel.create(
             context.assets,
             decoderModelPath,
-            options,
+            decoderOptions,
         )
 
-        maxSequenceLength = MAX_SEQUENCE_LENGTH
+        encoderInputBuffers = encoderModel.createInputBuffers()
+        encoderOutputBuffers = encoderModel.createOutputBuffers()
+        decoderInputBuffers = decoderModel.createInputBuffers()
+        decoderOutputBuffers = decoderModel.createOutputBuffers()
+
         textPostprocessor = TextPostprocessor()
 
-        logcat(LogPriority.DEBUG) { "Model initialization completed" }
+        logcat(LogPriority.INFO) { "OCR models initialized" }
     }
 
     override suspend fun recognizeText(image: Bitmap): String = withContext(Dispatchers.Default) {
-        var preprocessedImage: TensorBuffer? = null
+        require(!image.isRecycled) { "Input bitmap is recycled" }
+
+        val encoderInputBuffer = encoderInputBuffers[0]
+        preprocessImage(image, encoderInputBuffer)
 
         try {
-            preprocessedImage = preprocessImage(image)
+            // Run encoder and get hidden states
+            val encoderHiddenStates = runEncoder(encoderInputBuffer)
 
-            // Run encoder and get persistent copy of hidden states
-            val encoderHiddenStates = runEncoderAndGetStates(preprocessedImage)
-
-            // Run decoder with the persistent encoder states
+            // Run decoder with encoder states
             val tokenIds = runDecoder(encoderHiddenStates)
 
             val rawText = decodeTokens(tokenIds)
-            logcat(LogPriority.DEBUG) { "Raw recognized text: $rawText" }
 
             textPostprocessor.postprocess(rawText)
-        } finally {
-            preprocessedImage?.close()
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR) { "OCR recognition failed: ${e.message}" }
+            throw e
         }
-    }
-
-    private fun preprocessImage(bitmap: Bitmap): TensorBuffer {
-        logcat(LogPriority.DEBUG) { "Preprocessing image..." }
-        require(!bitmap.isRecycled) { "Input bitmap was recycled before OCR preprocessing" }
-
-        val workingBitmap = if (bitmap.config != Bitmap.Config.ARGB_8888) {
-            bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        } else {
-            bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        }
-
-        val resizedBitmap = if (workingBitmap.width != IMAGE_SIZE || workingBitmap.height != IMAGE_SIZE) {
-            val scaled = workingBitmap.scale(IMAGE_SIZE, IMAGE_SIZE)
-            if (scaled !== workingBitmap) {
-                workingBitmap.recycle()
-            }
-            scaled
-        } else {
-            workingBitmap
-        }
-
-        val inputBuffers = encoderModel.createInputBuffers()
-        val inputBuffer = inputBuffers[0]
-
-        val pixels = IntArray(IMAGE_SIZE * IMAGE_SIZE)
-        resizedBitmap.getPixels(pixels, 0, IMAGE_SIZE, 0, 0, IMAGE_SIZE, IMAGE_SIZE)
-        resizedBitmap.recycle()
-
-        val floatArray = FloatArray(IMAGE_SIZE * IMAGE_SIZE * 3)
-        var index = 0
-
-        for (pixel in pixels) {
-            val r = ((pixel shr 16) and 0xFF) / 255.0f
-            val g = ((pixel shr 8) and 0xFF) / 255.0f
-            val b = (pixel and 0xFF) / 255.0f
-
-            floatArray[index++] = (r - NORMALIZATION_MEAN) / NORMALIZATION_STD
-            floatArray[index++] = (g - NORMALIZATION_MEAN) / NORMALIZATION_STD
-            floatArray[index++] = (b - NORMALIZATION_MEAN) / NORMALIZATION_STD
-        }
-
-        inputBuffer.writeFloat(floatArray)
-
-        for (i in 1 until inputBuffers.size) {
-            inputBuffers[i].close()
-        }
-
-        return inputBuffer
     }
 
     /**
-     * Run encoder and return a persistent FloatArray copy of hidden states
-     * This avoids any buffer reuse issues with TensorBuffer
+     * Preprocesses the input bitmap for OCR recognition.
+     * Optimized to minimize memory allocations and copies.
      */
-    private fun runEncoderAndGetStates(imageBuffer: TensorBuffer): FloatArray {
-        logcat(LogPriority.DEBUG) { "Running encoder..." }
+    private fun preprocessImage(bitmap: Bitmap, inputBuffer: TensorBuffer) {
+        val needsResize = bitmap.width != IMAGE_SIZE || bitmap.height != IMAGE_SIZE
+        val needsConversion = bitmap.config != Bitmap.Config.ARGB_8888
 
-        val outputBuffers = encoderModel.createOutputBuffers()
+        // Convert bitmap to the required format for the model
+        val workingBitmap = when {
+            needsConversion && needsResize -> {
+                val converted = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                val scaled = converted.scale(IMAGE_SIZE, IMAGE_SIZE, filter = true)
+                if (scaled !== converted) converted.recycle()
+                scaled
+            }
+            needsConversion -> bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            needsResize -> bitmap.scale(IMAGE_SIZE, IMAGE_SIZE, filter = true)
+            else -> bitmap
+        }
 
         try {
-            encoderModel.run(listOf(imageBuffer), outputBuffers)
+            // Direct pixel processing with pre-allocated arrays
+            val pixelCount = IMAGE_SIZE * IMAGE_SIZE
+            val pixels = IntArray(pixelCount)
+            workingBitmap.getPixels(pixels, 0, IMAGE_SIZE, 0, 0, IMAGE_SIZE, IMAGE_SIZE)
 
-            // Read the encoder hidden states and create a persistent copy
-            val encoderStates = outputBuffers[0].readFloat()
+            // Normalize directly to output buffer
+            val normalizedPixels = FloatArray(pixelCount * 3)
+            normalizePixels(pixels, normalizedPixels)
 
-            logcat(LogPriority.DEBUG) { "Encoder hidden states size: ${encoderStates.size}" }
-
-            // Return a copy to ensure no buffer corruption
-            return encoderStates.copyOf()
+            inputBuffer.writeFloat(normalizedPixels)
         } finally {
-            outputBuffers.forEach { it.close() }
+            // Clean up only if we created a new bitmap
+            if (workingBitmap !== bitmap) {
+                workingBitmap.recycle()
+            }
         }
     }
 
     /**
-     * CRITICAL FIX: Completely rewritten decoder to avoid all buffer reuse issues
+     * Inline function for pixel normalization.
+     * Converts RGB pixels to normalized float values.
      */
-    private fun runDecoder(encoderHiddenStatesCopy: FloatArray): List<Int> {
-        logcat(LogPriority.DEBUG) { "Running decoder with encoder states size: ${encoderHiddenStatesCopy.size}" }
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun normalizePixels(pixels: IntArray, output: FloatArray) {
+        var outIndex = 0
+        for (pixel in pixels) {
+            val r = ((pixel shr 16) and 0xFF)
+            val g = ((pixel shr 8) and 0xFF)
+            val b = (pixel and 0xFF)
 
+            output[outIndex++] = r * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex++] = g * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex++] = b * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+        }
+    }
+
+    /**
+     * Run encoder and return a persistent FloatArray copy of hidden states.
+     * Uses dedicated output buffers created at initialization.
+     */
+    private fun runEncoder(imageBuffer: TensorBuffer): FloatArray {
+        val outputBuffers = encoderOutputBuffers
+        encoderModel.run(listOf(imageBuffer), outputBuffers)
+
+        // Read and create persistent copy
+        val encoderStates = outputBuffers[0].readFloat()
+        return encoderStates
+    }
+
+    private fun runDecoder(encoderHiddenStates: FloatArray): List<Int> {
         val tokenIds = mutableListOf(START_TOKEN_ID)
 
         try {
-            for (step in 0 until maxSequenceLength - 1) {
-                logcat(LogPriority.DEBUG) {
-                    "=== Decoder step $step === Token count: ${tokenIds.size}, Tokens: $tokenIds"
+            // Reset input IDs array to PAD tokens
+            inputIdsArray.fill(PAD_TOKEN_ID.toLong())
+            inputIdsArray[0] = START_TOKEN_ID.toLong()
+
+            for (step in 0 until MAX_SEQUENCE_LENGTH - 1) {
+                // Update input IDs array with current tokens
+                val currentSeqLen = tokenIds.size
+                for (i in 0 until currentSeqLen) {
+                    inputIdsArray[i] = tokenIds[i].toLong()
                 }
 
-                // CRITICAL: Create COMPLETELY fresh buffers each iteration
-                val inputBuffers = decoderModel.createInputBuffers()
-                val outputBuffers = decoderModel.createOutputBuffers()
+                // Write to pre-allocated buffers (reused across iterations)
+                decoderInputBuffers[0].writeLong(inputIdsArray)
+                decoderInputBuffers[1].writeFloat(encoderHiddenStates)
 
-                try {
-                    val inputIdsArray = LongArray(maxSequenceLength) { PAD_TOKEN_ID.toLong() }
+                // Run inference with reused buffers
+                decoderModel.run(decoderInputBuffers, decoderOutputBuffers)
 
-                    // Validate token bounds before copying
-                    logcat(LogPriority.DEBUG) { "Preparing ${tokenIds.size} tokens for decoder input" }
-                    for (i in tokenIds.indices) {
-                        val token = tokenIds[i]
+                // Extract next token
+                val logits = decoderOutputBuffers[0].readFloat()
+                val nextToken = findMaxLogitToken(logits, currentSeqLen)
 
-                        when {
-                            token < 0 -> {
-                                logcat(LogPriority.ERROR) { "CRITICAL: Negative token at position $i: $token" }
-                                throw IllegalStateException("Negative token ID detected: $token at position $i")
-                            }
-                            token >= VOCAB_SIZE -> {
-                                logcat(LogPriority.ERROR) { "CRITICAL: Token exceeds vocab at position $i: $token" }
-                                throw IllegalStateException("Token ID $token exceeds vocab size $VOCAB_SIZE at position $i")
-                            }
-                            else -> {
-                                inputIdsArray[i] = token.toLong()
-                            }
-                        }
-                    }
+                // Validate token
+                if (nextToken < 0 || nextToken >= VOCAB_SIZE) {
+                    logcat(LogPriority.ERROR) { "Invalid token: $nextToken at step $step" }
+                    break
+                }
 
-                    logcat(LogPriority.DEBUG) {
-                        "Input IDs array (first 10): ${inputIdsArray.take(10).joinToString(",")}"
-                    }
+                tokenIds.add(nextToken)
 
-                    // Write to fresh buffers
-                    val inputIdsBuffer = inputBuffers[0]
-                    val encoderStatesBuffer = inputBuffers[1]
-
-                    inputIdsBuffer.writeLong(inputIdsArray)
-                    logcat(LogPriority.DEBUG) { "Wrote ${inputIdsArray.size} input IDs (INT64) to buffer" }
-
-                    // Write encoder hidden states from the persistent copy
-                    encoderStatesBuffer.writeFloat(encoderHiddenStatesCopy)
-                    logcat(LogPriority.DEBUG) { "Wrote ${encoderHiddenStatesCopy.size} encoder states to buffer" }
-
-                    // Run inference
-                    logcat(LogPriority.DEBUG) { "Invoking decoder model..." }
-                    decoderModel.run(inputBuffers, outputBuffers)
-                    logcat(LogPriority.DEBUG) { "Decoder model invoked successfully" }
-
-                    // Read logits
-                    val logitsFloatArray = outputBuffers[0].readFloat()
-                    logcat(LogPriority.DEBUG) { "Read ${logitsFloatArray.size} logits from output" }
-
-                    // Calculate position for current sequence length
-                    val currentSeqLen = tokenIds.size
-                    val lastTokenPos = currentSeqLen - 1
-                    val logitsOffset = lastTokenPos * VOCAB_SIZE
-
-                    logcat(LogPriority.DEBUG) {
-                        "Extracting logits: seqLen=$currentSeqLen, lastPos=$lastTokenPos, offset=$logitsOffset"
-                    }
-
-                    // Validate logits array bounds
-                    if (logitsOffset + VOCAB_SIZE > logitsFloatArray.size) {
-                        val error = "Logits buffer too small! Expected at least ${logitsOffset + VOCAB_SIZE}, got ${logitsFloatArray.size}"
-                        logcat(LogPriority.ERROR) { error }
-                        throw IllegalStateException(error)
-                    }
-
-                    // Find token with max logit
-                    var maxLogit = Float.NEGATIVE_INFINITY
-                    var nextTokenId = PAD_TOKEN_ID
-
-                    for (vocabIdx in 0 until VOCAB_SIZE) {
-                        val logit = logitsFloatArray[logitsOffset + vocabIdx]
-                        if (logit > maxLogit) {
-                            maxLogit = logit
-                            nextTokenId = vocabIdx
-                        }
-                    }
-
-                    // Final validation
-                    if (nextTokenId < 0 || nextTokenId >= VOCAB_SIZE) {
-                        val error = "Invalid next token: $nextTokenId (vocab size: $VOCAB_SIZE)"
-                        logcat(LogPriority.ERROR) { error }
-                        throw IllegalStateException(error)
-                    }
-
-                    logcat(LogPriority.DEBUG) {
-                        "Selected token $nextTokenId with logit $maxLogit"
-                    }
-
-                    tokenIds.add(nextTokenId)
-                    logcat(LogPriority.DEBUG) { "Added token. New sequence: $tokenIds" }
-
-                    // Check stopping conditions
-                    if (nextTokenId == END_TOKEN_ID) {
-                        logcat(LogPriority.DEBUG) { "Reached END token, stopping" }
-                        break
-                    }
-
-                    if (tokenIds.size >= maxSequenceLength) {
-                        logcat(LogPriority.DEBUG) { "Reached max sequence length, stopping" }
-                        break
-                    }
-
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR) {
-                        "Error at decoder step $step with ${tokenIds.size} tokens: ${e.message}"
-                    }
-                    e.printStackTrace()
-                    throw e
-                } finally {
-                    inputBuffers.forEach { it.close() }
-                    outputBuffers.forEach { it.close() }
-                    logcat(LogPriority.DEBUG) { "Closed buffers for step $step" }
+                // Check stopping conditions
+                if (nextToken == END_TOKEN_ID) {
+                    logcat(LogPriority.DEBUG) { "Reached END token at step $step" }
+                    break
                 }
             }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "Decoder failed: ${e.message}" }
+            logcat(LogPriority.ERROR) { "Decoder failed at token ${tokenIds.size}: ${e.message}" }
             throw e
         }
 
-        logcat(LogPriority.DEBUG) { "Decoder complete with ${tokenIds.size} tokens: $tokenIds" }
         return tokenIds
     }
 
+    /**
+     * Find the token with maximum logit value for the current sequence position.
+     */
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun findMaxLogitToken(logits: FloatArray, seqLen: Int): Int {
+        val lastTokenPos = seqLen - 1
+        val logitsOffset = lastTokenPos * VOCAB_SIZE
+
+        // Validate bounds
+        if (logitsOffset + VOCAB_SIZE > logits.size) {
+            throw IllegalStateException("Logits buffer too small: need ${logitsOffset + VOCAB_SIZE}, got ${logits.size}")
+        }
+
+        // Find max logit
+        var maxLogit = Float.NEGATIVE_INFINITY
+        var maxToken = PAD_TOKEN_ID
+
+        for (vocabIdx in 0 until VOCAB_SIZE) {
+            val logit = logits[logitsOffset + vocabIdx]
+            if (logit > maxLogit) {
+                maxLogit = logit
+                maxToken = vocabIdx
+            }
+        }
+
+        return maxToken
+    }
+
+    /**
+     * Convert token IDs to text using the vocabulary.
+     */
     private fun decodeTokens(tokenIds: List<Int>): String {
-        logcat(LogPriority.DEBUG) { "Decoding ${tokenIds.size} tokens..." }
-        val text = StringBuilder()
+        val text = StringBuilder(tokenIds.size * 2) // Pre-allocate approximate size
 
         for (tokenId in tokenIds) {
-            if (tokenId < SPECIAL_TOKEN_THRESHOLD) {
-                continue
-            }
+            // Skip special tokens
+            if (tokenId < SPECIAL_TOKEN_THRESHOLD) continue
 
             if (tokenId >= vocab.size) {
                 logcat(LogPriority.ERROR) { "Token $tokenId outside vocabulary range ${vocab.size}" }
                 continue
             }
 
-            val token = vocab[tokenId]
-            text.append(token)
+            text.append(vocab[tokenId])
         }
 
         return text.toString()
     }
 
     override fun close() {
-        encoderModel.close()
-        decoderModel.close()
+        try {
+            // Close reusable buffers
+            encoderInputBuffers.forEach { it.close() }
+            encoderOutputBuffers.forEach { it.close() }
+            decoderInputBuffers.forEach { it.close() }
+            decoderOutputBuffers.forEach { it.close() }
+
+            // Close models
+            encoderModel.close()
+            decoderModel.close()
+
+            logcat(LogPriority.INFO) { "OCR models closed successfully" }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR) { "Error closing OCR models: ${e.message}" }
+        }
     }
 }
