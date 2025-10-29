@@ -45,6 +45,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -67,6 +68,7 @@ fun DictionarySearchScreen(
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onTermClick: (DictionaryTerm) -> Unit,
+    onOpenDictionarySettings: () -> Unit,
 ) {
     Scaffold(
         topBar = { scrollBehavior ->
@@ -96,6 +98,9 @@ fun DictionarySearchScreen(
             when {
                 state.isLoading -> {
                     LoadingScreen(Modifier.fillMaxSize())
+                }
+                state.enabledDictionaryIds.isEmpty() -> {
+                    NoDictionariesEnabledMessage(onOpenDictionarySettings = onOpenDictionarySettings)
                 }
                 state.isSearching -> {
                     Box(
@@ -437,6 +442,50 @@ internal fun DictionaryTermCard(
                 text = dictionaryName,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoDictionariesEnabledMessage(
+    onOpenDictionarySettings: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(MR.strings.dictionary_no_enabled),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+
+            val linkText = buildAnnotatedString {
+                pushStringAnnotation(tag = "settings", annotation = "settings")
+                withStyle(
+                    SpanStyle(
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                ) {
+                    append(stringResource(MR.strings.dictionary_manage_settings))
+                }
+                pop()
+            }
+
+            ClickableText(
+                text = linkText,
+                style = MaterialTheme.typography.bodyMedium.copy(textAlign = TextAlign.Center),
+                onClick = { onOpenDictionarySettings() },
             )
         }
     }
