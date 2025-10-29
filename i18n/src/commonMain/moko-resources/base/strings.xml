@@ -1061,6 +1061,8 @@
     <string name="label_dictionary">Dictionary</string>
     <string name="label_dictionaries">Dictionaries</string>
     <string name="information_empty_dictionary_search">Search for terms in your dictionaries</string>
+    <string name="dictionary_no_enabled">No dictionaries are enabled.</string>
+    <string name="dictionary_manage_settings">Manage dictionaries in settings</string>
 
     <!-- OCR Related -->
     <string name="action_ocr">OCR text recognition</string>

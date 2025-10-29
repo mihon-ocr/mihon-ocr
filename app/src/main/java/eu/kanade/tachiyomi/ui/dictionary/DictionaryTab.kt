@@ -13,10 +13,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.presentation.dictionary.DictionarySearchScreen
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.main.MainActivity
+import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import kotlinx.coroutines.flow.collectLatest
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -42,6 +45,7 @@ data object DictionaryTab : Tab {
         val context = LocalContext.current
         val screenModel = rememberScreenModel { DictionarySearchScreenModel() }
         val state by screenModel.state.collectAsState()
+        val navigator = LocalNavigator.currentOrThrow
 
         DictionarySearchScreen(
             state = state,
@@ -51,6 +55,9 @@ data object DictionaryTab : Tab {
             onTermClick = { term ->
                 // Could navigate to an Anki export in the future
                 screenModel.selectTerm(term)
+            },
+            onOpenDictionarySettings = {
+                navigator.push(SettingsScreen(SettingsScreen.Destination.Dictionary))
             },
         )
 
