@@ -7,6 +7,9 @@ import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import com.google.ai.edge.litert.TensorBuffer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
@@ -25,6 +28,11 @@ class OcrRepositoryImpl(
     private val decoderInputBuffers: List<TensorBuffer>
     private val decoderOutputBuffers: List<TensorBuffer>
     private val inputIdsArray: LongArray = LongArray(MAX_SEQUENCE_LENGTH)
+    private val inferenceMutex = Mutex() // Guards shared inference buffers
+    private val pixelsBuffer = IntArray(IMAGE_SIZE * IMAGE_SIZE)
+    private val normalizedBuffer = FloatArray(IMAGE_SIZE * IMAGE_SIZE * 3)
+    private val tokenBuffer = IntArray(MAX_SEQUENCE_LENGTH)
+    private val textBuilder = StringBuilder(MAX_SEQUENCE_LENGTH * 2)
 
     companion object {
         private const val IMAGE_SIZE = 224
@@ -68,25 +76,27 @@ class OcrRepositoryImpl(
     }
 
     override suspend fun recognizeText(image: Bitmap): String = withContext(Dispatchers.Default) {
-        require(!image.isRecycled) { "Input bitmap is recycled" }
+        val rawText = inferenceMutex.withLock {
+            require(!image.isRecycled) { "Input bitmap is recycled" }
 
-        val encoderInputBuffer = encoderInputBuffers[0]
-        preprocessImage(image, encoderInputBuffer)
+            val encoderInputBuffer = encoderInputBuffers[0]
+            preprocessImage(image, encoderInputBuffer)
 
-        try {
-            // Run encoder and get hidden states
-            val encoderHiddenStates = runEncoder(encoderInputBuffer)
+            try {
+                // Run encoder and get hidden states
+                val encoderHiddenStates = runEncoder()
 
-            // Run decoder with encoder states
-            val tokenIds = runDecoder(encoderHiddenStates)
+                // Run decoder with encoder states
+                val tokenCount = runDecoder(encoderHiddenStates)
 
-            val rawText = decodeTokens(tokenIds)
-
-            textPostprocessor.postprocess(rawText)
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "OCR recognition failed: ${e.message}" }
-            throw e
+                decodeTokens(tokenBuffer, tokenCount)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "OCR recognition failed: ${e.message}" }
+                throw e
+            }
         }
+
+        textPostprocessor.postprocess(rawText)
     }
 
     /**
@@ -112,12 +122,11 @@ class OcrRepositoryImpl(
 
         try {
             // Direct pixel processing with pre-allocated arrays
-            val pixelCount = IMAGE_SIZE * IMAGE_SIZE
-            val pixels = IntArray(pixelCount)
+            val pixels = pixelsBuffer
             workingBitmap.getPixels(pixels, 0, IMAGE_SIZE, 0, 0, IMAGE_SIZE, IMAGE_SIZE)
 
             // Normalize directly to output buffer
-            val normalizedPixels = FloatArray(pixelCount * 3)
+            val normalizedPixels = normalizedBuffer
             normalizePixels(pixels, normalizedPixels)
 
             inputBuffer.writeFloat(normalizedPixels)
@@ -151,40 +160,48 @@ class OcrRepositoryImpl(
      * Run encoder and return a persistent FloatArray copy of hidden states.
      * Uses dedicated output buffers created at initialization.
      */
-    private fun runEncoder(imageBuffer: TensorBuffer): FloatArray {
+    private fun runEncoder(): FloatArray {
         val outputBuffers = encoderOutputBuffers
-        encoderModel.run(listOf(imageBuffer), outputBuffers)
+        encoderModel.run(encoderInputBuffers, outputBuffers)
 
         // Read and create persistent copy
         val encoderStates = outputBuffers[0].readFloat()
         return encoderStates
     }
 
-    private fun runDecoder(encoderHiddenStates: FloatArray): List<Int> {
-        val tokenIds = mutableListOf(START_TOKEN_ID)
-
+    private fun runDecoder(encoderHiddenStates: FloatArray): Int {
+        val tokenIds = tokenBuffer
+        tokenIds[0] = START_TOKEN_ID
         decoderInputBuffers[1].writeFloat(encoderHiddenStates)
+
+        var tokenCount = 1
 
         try {
             // Reset input IDs array to PAD tokens
             inputIdsArray.fill(PAD_TOKEN_ID.toLong())
             inputIdsArray[0] = START_TOKEN_ID.toLong()
 
+            val decoderInputs = decoderInputBuffers
+            val decoderOutputs = decoderOutputBuffers
+            val decoderInput = decoderInputs[0]
+            val decoderOutput = decoderOutputs[0]
+
             for (step in 0 until MAX_SEQUENCE_LENGTH - 1) {
-                // Update input IDs array with current tokens
-                val currentSeqLen = tokenIds.size
-                for (i in 0 until currentSeqLen) {
-                    inputIdsArray[i] = tokenIds[i].toLong()
+                val currentSeqLen = tokenCount
+
+                if (currentSeqLen >= MAX_SEQUENCE_LENGTH) {
+                    logcat(LogPriority.DEBUG) { "Reached max sequence length at step $step" }
+                    break
                 }
 
                 // Write to pre-allocated buffers (reused across iterations)
-                decoderInputBuffers[0].writeLong(inputIdsArray)
+                decoderInput.writeLong(inputIdsArray)
 
                 // Run inference with reused buffers
-                decoderModel.run(decoderInputBuffers, decoderOutputBuffers)
+                decoderModel.run(decoderInputs, decoderOutputs)
 
                 // Extract next token
-                val logits = decoderOutputBuffers[0].readFloat()
+                val logits = decoderOutput.readFloat()
                 val nextToken = findMaxLogitToken(logits, currentSeqLen)
 
                 // Validate token
@@ -193,7 +210,10 @@ class OcrRepositoryImpl(
                     break
                 }
 
-                tokenIds.add(nextToken)
+                val nextIndex = tokenCount
+                tokenIds[nextIndex] = nextToken
+                inputIdsArray[nextIndex] = nextToken.toLong()
+                tokenCount = nextIndex + 1
 
                 // Check stopping conditions
                 if (nextToken == END_TOKEN_ID) {
@@ -201,12 +221,12 @@ class OcrRepositoryImpl(
                     break
                 }
             }
+
+            return tokenCount
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "Decoder failed at token ${tokenIds.size}: ${e.message}" }
+            logcat(LogPriority.ERROR) { "Decoder failed at token $tokenCount: ${e.message}" }
             throw e
         }
-
-        return tokenIds
     }
 
     /**
@@ -240,10 +260,13 @@ class OcrRepositoryImpl(
     /**
      * Convert token IDs to text using the vocabulary.
      */
-    private fun decodeTokens(tokenIds: List<Int>): String {
-        val text = StringBuilder(tokenIds.size * 2) // Pre-allocate approximate size
+    private fun decodeTokens(tokenIds: IntArray, tokenCount: Int): String {
+    // Reuse builder to minimize per-call allocations
+    val text = textBuilder
+        text.setLength(0)
 
-        for (tokenId in tokenIds) {
+        for (index in 0 until tokenCount) {
+            val tokenId = tokenIds[index]
             // Skip special tokens
             if (tokenId < SPECIAL_TOKEN_THRESHOLD) continue
 
@@ -259,6 +282,14 @@ class OcrRepositoryImpl(
     }
 
     override fun close() {
+        runBlocking {
+            inferenceMutex.withLock {
+                closeInternal()
+            }
+        }
+    }
+
+    private fun closeInternal() {
         try {
             // Close reusable buffers
             encoderInputBuffers.forEach { it.close() }
