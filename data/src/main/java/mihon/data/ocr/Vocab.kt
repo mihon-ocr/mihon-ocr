@@ -1,6 +1,6 @@
 package mihon.data.ocr
 
-val vocab = listOf(
+val vocab = arrayOf(
 "[PAD]",
 "[UNK]",
 "[CLS]",
@@ -6143,4 +6143,6 @@ val vocab = listOf(
 "희",
 "﨑",
 "﨟",
+"",
+"",
 )

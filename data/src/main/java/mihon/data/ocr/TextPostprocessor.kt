@@ -1,69 +1,97 @@
 package mihon.data.ocr
 
-import java.util.regex.Pattern
+// Half-width to full-width conversion mappings for Japanese text
+private val HALF_TO_FULL_TABLE = CharArray(127) { it.toChar() }.apply {
+    this['!'.code] = '！'; this['"'.code] = '"'; this['#'.code] = '＃'
+    this['$'.code] = '＄'; this['%'.code] = '％'; this['&'.code] = '＆'
+    this['\''.code] = '\''; this['('.code] = '（'; this[')'.code] = '）'
+    this['*'.code] = '＊'; this['+'.code] = '＋'; this[','.code] = '，'
+    this['-'.code] = '－'; this['.'.code] = '．'; this['/'.code] = '／'
+    this['0'.code] = '０'; this['1'.code] = '１'; this['2'.code] = '２'
+    this['3'.code] = '３'; this['4'.code] = '４'; this['5'.code] = '５'
+    this['6'.code] = '６'; this['7'.code] = '７'; this['8'.code] = '８'
+    this['9'.code] = '９'; this[':'.code] = '：'; this[';'.code] = '；'
+    this['<'.code] = '＜'; this['='.code] = '＝'; this['>'.code] = '＞'
+    this['?'.code] = '？'; this['@'.code] = '＠'
+    this['A'.code] = 'Ａ'; this['B'.code] = 'Ｂ'; this['C'.code] = 'Ｃ'
+    this['D'.code] = 'Ｄ'; this['E'.code] = 'Ｅ'; this['F'.code] = 'Ｆ'
+    this['G'.code] = 'Ｇ'; this['H'.code] = 'Ｈ'; this['I'.code] = 'Ｉ'
+    this['J'.code] = 'Ｊ'; this['K'.code] = 'Ｋ'; this['L'.code] = 'Ｌ'
+    this['M'.code] = 'Ｍ'; this['N'.code] = 'Ｎ'; this['O'.code] = 'Ｏ'
+    this['P'.code] = 'Ｐ'; this['Q'.code] = 'Ｑ'; this['R'.code] = 'Ｒ'
+    this['S'.code] = 'Ｓ'; this['T'.code] = 'Ｔ'; this['U'.code] = 'Ｕ'
+    this['V'.code] = 'Ｖ'; this['W'.code] = 'Ｗ'; this['X'.code] = 'Ｘ'
+    this['Y'.code] = 'Ｙ'; this['Z'.code] = 'Ｚ'
+    this['['.code] = '［'; this['\\'.code] = '＼'; this[']'.code] = '］'
+    this['^'.code] = '＾'; this['_'.code] = '＿'; this['`'.code] = '\''
+    this['a'.code] = 'ａ'; this['b'.code] = 'ｂ'; this['c'.code] = 'ｃ'
+    this['d'.code] = 'ｄ'; this['e'.code] = 'ｅ'; this['f'.code] = 'ｆ'
+    this['g'.code] = 'ｇ'; this['h'.code] = 'ｈ'; this['i'.code] = 'ｉ'
+    this['j'.code] = 'ｊ'; this['k'.code] = 'ｋ'; this['l'.code] = 'ｌ'
+    this['m'.code] = 'ｍ'; this['n'.code] = 'ｎ'; this['o'.code] = 'ｏ'
+    this['p'.code] = 'ｐ'; this['q'.code] = 'ｑ'; this['r'.code] = 'ｒ'
+    this['s'.code] = 'ｓ'; this['t'.code] = 'ｔ'; this['u'.code] = 'ｕ'
+    this['v'.code] = 'ｖ'; this['w'.code] = 'ｗ'; this['x'.code] = 'ｘ'
+    this['y'.code] = 'ｙ'; this['z'.code] = 'ｚ'
+    this['{'.code] = '｛'; this['|'.code] = '｜';this['}'.code] = '｝'
+    this['~'.code] = '～'
+}
 
 class TextPostprocessor {
-
-    companion object {
-        private val ELLIPSIS_PATTERN = Pattern.compile("[・.]{2,}")
-
-        // Half-width to full-width conversion mappings for Japanese text
-        private val HALF_TO_FULL_ASCII = mapOf(
-            '!' to '！', '"' to '"', '#' to '＃', '$' to '＄', '%' to '％',
-            '&' to '＆', '\'' to '\'', '(' to '（', ')' to '）', '*' to '＊',
-            '+' to '＋', ',' to '，', '-' to '－', '.' to '．', '/' to '／',
-            '0' to '０', '1' to '１', '2' to '２', '3' to '３', '4' to '４',
-            '5' to '５', '6' to '６', '7' to '７', '8' to '８', '9' to '９',
-            ':' to '：', ';' to '；', '<' to '＜', '=' to '＝', '>' to '＞',
-            '?' to '？', '@' to '＠',
-            'A' to 'Ａ', 'B' to 'Ｂ', 'C' to 'Ｃ', 'D' to 'Ｄ', 'E' to 'Ｅ',
-            'F' to 'Ｆ', 'G' to 'Ｇ', 'H' to 'Ｈ', 'I' to 'Ｉ', 'J' to 'Ｊ',
-            'K' to 'Ｋ', 'L' to 'Ｌ', 'M' to 'Ｍ', 'N' to 'Ｎ', 'O' to 'Ｏ',
-            'P' to 'Ｐ', 'Q' to 'Ｑ', 'R' to 'Ｒ', 'S' to 'Ｓ', 'T' to 'Ｔ',
-            'U' to 'Ｕ', 'V' to 'Ｖ', 'W' to 'Ｗ', 'X' to 'Ｘ', 'Y' to 'Ｙ',
-            'Z' to 'Ｚ',
-            '[' to '［', '\\' to '＼', ']' to '］', '^' to '＾', '_' to '＿',
-            '`' to '\'',
-            'a' to 'ａ', 'b' to 'ｂ', 'c' to 'ｃ', 'd' to 'ｄ', 'e' to 'ｅ',
-            'f' to 'ｆ', 'g' to 'ｇ', 'h' to 'ｈ', 'i' to 'ｉ', 'j' to 'ｊ',
-            'k' to 'ｋ', 'l' to 'ｌ', 'm' to 'ｍ', 'n' to 'ｎ', 'o' to 'ｏ',
-            'p' to 'ｐ', 'q' to 'ｑ', 'r' to 'ｒ', 's' to 'ｓ', 't' to 'ｔ',
-            'u' to 'ｕ', 'v' to 'ｖ', 'w' to 'ｗ', 'x' to 'ｘ', 'y' to 'ｙ',
-            'z' to 'ｚ',
-            '{' to '｛', '|' to '｜', '}' to '｝', '~' to '～'
-        )
-    }
+    // Reusable StringBuilder to avoid allocations
+    private val stringBuilder = StringBuilder(512)
 
     fun postprocess(text: String): String {
-        var result = text
+        if (text.isEmpty()) return text
 
-        // Remove all whitespace
-        result = result.replace("\\s".toRegex(), "")
+        stringBuilder.setLength(0)
+        stringBuilder.ensureCapacity(text.length)
 
-        // Replace horizontal ellipsis with three dots
-        result = result.replace("…", "...")
+        // Single pass: remove whitespace, replace ellipsis, convert to full-width
+        var i = 0
+        val len = text.length
 
-        // Replace multiple dots or middots with equivalent number of periods
-        val matcher = ELLIPSIS_PATTERN.matcher(result)
-        val sb = StringBuffer()
-        while (matcher.find()) {
-            val length = matcher.end() - matcher.start()
-            matcher.appendReplacement(sb, ".".repeat(length))
+        while (i < len) {
+            val char = text[i]
+
+            if (char.isWhitespace()) {
+                i++
+                continue
+            }
+
+            if (char == '…') {
+                stringBuilder.append("...")
+                i++
+                continue
+            }
+
+            if (char == '.' || char == '・') {
+                var dotCount = 1
+                var laterCharIndex = i + 1
+                while (laterCharIndex < len && (text[laterCharIndex] == '.' || text[laterCharIndex] == '・')) {
+                    dotCount++
+                    laterCharIndex++
+                }
+
+                if (dotCount >= 2) {
+                    // Replace with periods
+                    repeat(dotCount) { stringBuilder.append('.') }
+                    i = laterCharIndex
+                    continue
+                }
+            }
+
+            // Convert half-width to full-width
+            val code = char.code
+            if (code < HALF_TO_FULL_TABLE.size) {
+                stringBuilder.append(HALF_TO_FULL_TABLE[code])
+            } else {
+                stringBuilder.append(char)
+            }
+
+            i++
         }
-        matcher.appendTail(sb)
-        result = sb.toString()
 
-        result = halfToFullWidth(result)
-
-        return result
-    }
-
-    // Convert half-width ASCII characters and digits to full-width
-    private fun halfToFullWidth(text: String): String {
-        val result = StringBuilder(text.length)
-        for (char in text) {
-            result.append(HALF_TO_FULL_ASCII[char] ?: char)
-        }
-        return result.toString()
+        return stringBuilder.toString()
     }
 }

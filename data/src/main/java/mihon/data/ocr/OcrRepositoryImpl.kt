@@ -6,11 +6,9 @@ import androidx.core.graphics.scale
 import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import com.google.ai.edge.litert.TensorBuffer
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import mihon.domain.ocr.repository.OcrRepository
@@ -45,7 +43,7 @@ class OcrRepositoryImpl(
         private const val PAD_TOKEN_ID = 0
         private const val SPECIAL_TOKEN_THRESHOLD = 5
         private const val MAX_SEQUENCE_LENGTH = 300
-        private const val VOCAB_SIZE = 6144 // This is what the model specifies, but the vocab list is 6142 long
+        private const val VOCAB_SIZE = 6144
     }
 
     init {
@@ -75,33 +73,27 @@ class OcrRepositoryImpl(
         logcat(LogPriority.INFO) { "OCR models initialized" }
     }
 
-    override suspend fun recognizeText(image: Bitmap): String = withContext(Dispatchers.Default) {
+    override suspend fun recognizeText(image: Bitmap): String {
         val rawText = inferenceMutex.withLock {
             require(!image.isRecycled) { "Input bitmap is recycled" }
 
             val encoderInputBuffer = encoderInputBuffers[0]
             preprocessImage(image, encoderInputBuffer)
 
-            try {
-                // Run encoder and get hidden states
-                val encoderHiddenStates = runEncoder()
+            // Run encoder and get hidden states
+            val encoderHiddenStates = runEncoder()
 
-                // Run decoder with encoder states
-                val tokenCount = runDecoder(encoderHiddenStates)
+            // Run decoder with encoder states
+            val tokenCount = runDecoder(encoderHiddenStates)
 
-                decodeTokens(tokenBuffer, tokenCount)
-            } catch (e: Exception) {
-                logcat(LogPriority.ERROR) { "OCR recognition failed: ${e.message}" }
-                throw e
-            }
+            decodeTokens(tokenBuffer, tokenCount)
         }
 
-        textPostprocessor.postprocess(rawText)
+        return textPostprocessor.postprocess(rawText)
     }
 
     /**
      * Preprocesses the input bitmap for OCR recognition.
-     * Optimized to minimize memory allocations and copies.
      */
     private fun preprocessImage(bitmap: Bitmap, inputBuffer: TensorBuffer) {
         val needsResize = bitmap.width != IMAGE_SIZE || bitmap.height != IMAGE_SIZE
@@ -122,14 +114,12 @@ class OcrRepositoryImpl(
 
         try {
             // Direct pixel processing with pre-allocated arrays
-            val pixels = pixelsBuffer
-            workingBitmap.getPixels(pixels, 0, IMAGE_SIZE, 0, 0, IMAGE_SIZE, IMAGE_SIZE)
+            workingBitmap.getPixels(pixelsBuffer, 0, IMAGE_SIZE, 0, 0, IMAGE_SIZE, IMAGE_SIZE)
 
             // Normalize directly to output buffer
-            val normalizedPixels = normalizedBuffer
-            normalizePixels(pixels, normalizedPixels)
+            normalizePixels(pixelsBuffer, normalizedBuffer)
 
-            inputBuffer.writeFloat(normalizedPixels)
+            inputBuffer.writeFloat(normalizedBuffer)
         } finally {
             // Clean up only if we created a new bitmap
             if (workingBitmap !== bitmap) {
@@ -141,18 +131,53 @@ class OcrRepositoryImpl(
     /**
      * Inline function for pixel normalization.
      * Converts RGB pixels to normalized float values.
+     * Manually unrolled for better performance.
      */
     @Suppress("NOTHING_TO_INLINE")
     private inline fun normalizePixels(pixels: IntArray, output: FloatArray) {
         var outIndex = 0
-        for (pixel in pixels) {
-            val r = ((pixel shr 16) and 0xFF)
-            val g = ((pixel shr 8) and 0xFF)
-            val b = (pixel and 0xFF)
+        val size = IMAGE_SIZE * IMAGE_SIZE
 
-            output[outIndex++] = r * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex++] = g * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex++] = b * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+        // Process 4 pixels at a time for better cache utilization
+        val limit = size - 3
+        var i = 0
+        while (i < limit) {
+            // Pixel 1
+            var pixel = pixels[i]
+            output[outIndex] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 1] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 2] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+
+            // Pixel 2
+            pixel = pixels[i + 1]
+            output[outIndex + 3] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 4] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 5] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+
+            // Pixel 3
+            pixel = pixels[i + 2]
+            output[outIndex + 6] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 7] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 8] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+
+            // Pixel 4
+            pixel = pixels[i + 3]
+            output[outIndex + 9] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 10] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 11] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+
+            i += 4
+            outIndex += 12
+        }
+
+        // Handle remaining pixels
+        while (i < size) {
+            val pixel = pixels[i]
+            output[outIndex] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 1] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex + 2] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            i++
+            outIndex += 3
         }
     }
 
@@ -172,86 +197,101 @@ class OcrRepositoryImpl(
     private fun runDecoder(encoderHiddenStates: FloatArray): Int {
         val tokenIds = tokenBuffer
         tokenIds[0] = START_TOKEN_ID
-        decoderInputBuffers[1].writeFloat(encoderHiddenStates)
-
         var tokenCount = 1
 
-        try {
-            // Reset input IDs array to PAD tokens
-            inputIdsArray.fill(PAD_TOKEN_ID.toLong())
-            inputIdsArray[0] = START_TOKEN_ID.toLong()
+        // Reset input IDs array to PAD tokens
+        inputIdsArray.fill(PAD_TOKEN_ID.toLong())
+        inputIdsArray[0] = START_TOKEN_ID.toLong()
 
-            val decoderInputs = decoderInputBuffers
-            val decoderOutputs = decoderOutputBuffers
-            val decoderInput = decoderInputs[0]
-            val decoderOutput = decoderOutputs[0]
+        val decoderInputs = decoderInputBuffers
+        decoderInputs[1].writeFloat(encoderHiddenStates)
 
-            for (step in 0 until MAX_SEQUENCE_LENGTH - 1) {
-                val currentSeqLen = tokenCount
+        val decoderOutputs = decoderOutputBuffers
+        val decoderInput = decoderInputs[0]
+        val decoderOutput = decoderOutputs[0]
 
-                if (currentSeqLen >= MAX_SEQUENCE_LENGTH) {
-                    logcat(LogPriority.DEBUG) { "Reached max sequence length at step $step" }
-                    break
-                }
+        @Suppress("UNUSED_PARAMETER")
+        for (step in 0 until MAX_SEQUENCE_LENGTH - 1) {
+            val currentSeqLen = tokenCount
 
-                // Write to pre-allocated buffers (reused across iterations)
-                decoderInput.writeLong(inputIdsArray)
-
-                // Run inference with reused buffers
-                decoderModel.run(decoderInputs, decoderOutputs)
-
-                // Extract next token
-                val logits = decoderOutput.readFloat()
-                val nextToken = findMaxLogitToken(logits, currentSeqLen)
-
-                // Validate token
-                if (nextToken < 0 || nextToken >= VOCAB_SIZE) {
-                    logcat(LogPriority.ERROR) { "Invalid token: $nextToken at step $step" }
-                    break
-                }
-
-                val nextIndex = tokenCount
-                tokenIds[nextIndex] = nextToken
-                inputIdsArray[nextIndex] = nextToken.toLong()
-                tokenCount = nextIndex + 1
-
-                // Check stopping conditions
-                if (nextToken == END_TOKEN_ID) {
-                    logcat(LogPriority.DEBUG) { "Reached END token at step $step" }
-                    break
-                }
+            if (currentSeqLen >= MAX_SEQUENCE_LENGTH) {
+                break
             }
 
-            return tokenCount
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "Decoder failed at token $tokenCount: ${e.message}" }
-            throw e
+            // Write to pre-allocated buffers (reused across iterations)
+            decoderInput.writeLong(inputIdsArray)
+
+            // Run inference with reused buffers
+            decoderModel.run(decoderInputs, decoderOutputs)
+
+            // Extract next token
+            val logits = decoderOutput.readFloat()
+            val nextToken = findMaxLogitToken(logits, currentSeqLen)
+
+            // Validate token
+            if (nextToken < 0) {
+                break
+            }
+
+            val nextIndex = tokenCount
+            tokenIds[nextIndex] = nextToken
+            inputIdsArray[nextIndex] = nextToken.toLong()
+            tokenCount = nextIndex + 1
+
+            // Check stopping conditions
+            if (nextToken == END_TOKEN_ID) {
+                break
+            }
         }
+
+        return tokenCount
     }
 
     /**
      * Find the token with maximum logit value for the current sequence position.
+     * Optimized with manual loop unrolling for better performance.
      */
     @Suppress("NOTHING_TO_INLINE")
     private inline fun findMaxLogitToken(logits: FloatArray, seqLen: Int): Int {
         val lastTokenPos = seqLen - 1
         val logitsOffset = lastTokenPos * VOCAB_SIZE
 
-        // Validate bounds
-        if (logitsOffset + VOCAB_SIZE > logits.size) {
-            throw IllegalStateException("Logits buffer too small: need ${logitsOffset + VOCAB_SIZE}, got ${logits.size}")
-        }
-
-        // Find max logit
         var maxLogit = Float.NEGATIVE_INFINITY
         var maxToken = PAD_TOKEN_ID
 
-        for (vocabIdx in 0 until VOCAB_SIZE) {
-            val logit = logits[logitsOffset + vocabIdx]
-            if (logit > maxLogit) {
-                maxLogit = logit
-                maxToken = vocabIdx
-            }
+        // Process 8 values at a time for better instruction-level parallelism
+        val limit = VOCAB_SIZE - 7
+        var vocabIdx = 0
+
+        while (vocabIdx < limit) {
+            val offset = logitsOffset + vocabIdx
+
+            // Unroll 8 comparisons
+            var logit = logits[offset]
+            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx }
+
+            logit = logits[offset + 1]
+            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 1 }
+
+            logit = logits[offset + 2]
+            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 2 }
+
+            logit = logits[offset + 3]
+            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 3 }
+
+            logit = logits[offset + 4]
+            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 4 }
+
+            logit = logits[offset + 5]
+            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 5 }
+
+            logit = logits[offset + 6]
+            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 6 }
+
+            logit = logits[offset + 7]
+            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 7 }
+
+            vocabIdx += 8
         }
 
         return maxToken
@@ -261,21 +301,19 @@ class OcrRepositoryImpl(
      * Convert token IDs to text using the vocabulary.
      */
     private fun decodeTokens(tokenIds: IntArray, tokenCount: Int): String {
-    // Reuse builder to minimize per-call allocations
-    val text = textBuilder
+        // Reuse builder to minimize per-call allocations
+        val text = textBuilder
         text.setLength(0)
 
         for (index in 0 until tokenCount) {
             val tokenId = tokenIds[index]
-            // Skip special tokens
+
             if (tokenId < SPECIAL_TOKEN_THRESHOLD) continue
 
-            if (tokenId >= vocab.size) {
-                logcat(LogPriority.ERROR) { "Token $tokenId outside vocabulary range ${vocab.size}" }
-                continue
+            // Bounds check once per token
+            if (tokenId < VOCAB_SIZE) {
+                text.append(vocab[tokenId])
             }
-
-            text.append(vocab[tokenId])
         }
 
         return text.toString()
