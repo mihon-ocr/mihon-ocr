@@ -42,6 +42,7 @@ class OcrRepositoryImpl(
 
     init {
         val encoderOptions = CompiledModel.Options(Accelerator.CPU)
+        // decoder does not support GPU operations
         val decoderOptions = CompiledModel.Options(Accelerator.CPU)
 
         encoderModel = CompiledModel.create(
@@ -162,6 +163,8 @@ class OcrRepositoryImpl(
     private fun runDecoder(encoderHiddenStates: FloatArray): List<Int> {
         val tokenIds = mutableListOf(START_TOKEN_ID)
 
+        decoderInputBuffers[1].writeFloat(encoderHiddenStates)
+
         try {
             // Reset input IDs array to PAD tokens
             inputIdsArray.fill(PAD_TOKEN_ID.toLong())
@@ -176,7 +179,6 @@ class OcrRepositoryImpl(
 
                 // Write to pre-allocated buffers (reused across iterations)
                 decoderInputBuffers[0].writeLong(inputIdsArray)
-                decoderInputBuffers[1].writeFloat(encoderHiddenStates)
 
                 // Run inference with reused buffers
                 decoderModel.run(decoderInputBuffers, decoderOutputBuffers)
