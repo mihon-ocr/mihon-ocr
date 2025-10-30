@@ -2,9 +2,11 @@ package tachiyomi.presentation.core.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -98,6 +100,17 @@ fun ResizableSheet(
 			modifier = Modifier.fillMaxSize(),
 			contentAlignment = Alignment.BottomCenter,
 		) {
+			// backdrop that dismisses the sheet when clicked
+			Box(
+				modifier = Modifier
+					.fillMaxSize()
+					.clickable(
+						indication = null,
+						interactionSource = remember { MutableInteractionSource() },
+						onClick = onDismissRequest,
+					),
+			)
+
 			Surface(
 				modifier = Modifier
 					.fillMaxWidth()
