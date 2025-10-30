@@ -122,8 +122,6 @@ fun OcrResultBottomSheet(
                 // Dictionary search results section
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                Spacer(modifier = Modifier.height(8.dp))
-
                 // Dictionary results
                 when {
                     searchState.isLoading -> {
