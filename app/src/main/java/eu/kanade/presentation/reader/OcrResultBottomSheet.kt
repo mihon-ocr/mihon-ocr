@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -125,6 +126,33 @@ fun OcrResultBottomSheet(
 
                 // Dictionary results
                 when {
+                    searchState.isLoading -> {
+                        // Initial state - loading dictionaries
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(100.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    searchState.dictionaries.isEmpty() || searchState.enabledDictionaryIds.isEmpty() -> {
+                        // No dictionaries enabled
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(150.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(MR.strings.no_dictionaries_enabled),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
                     searchState.isSearching -> {
                         Box(
                             modifier = Modifier
@@ -173,17 +201,6 @@ fun OcrResultBottomSheet(
                                     },
                                 )
                             }
-                        }
-                    }
-                    else -> {
-                        // Initial state - loading dictionaries
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(100.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator()
                         }
                     }
                 }
