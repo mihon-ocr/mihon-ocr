@@ -41,6 +41,8 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 
+private const val SHEET_EXPANSION_THRESHOLD = 0.80f
+
 @Composable
 fun OcrResultBottomSheet(
     onDismissRequest: () -> Unit,
@@ -68,7 +70,8 @@ fun OcrResultBottomSheet(
         ResizableSheet(
             onDismissRequest = onDismissRequest,
             initialValue = SheetValue.PartiallyExpanded,
-        ) {
+        ) { expansionFraction ->
+            val isSheetExpanded = expansionFraction >= SHEET_EXPANSION_THRESHOLD
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -76,51 +79,53 @@ fun OcrResultBottomSheet(
                     .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.medium),
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.LibraryBooks,
-                        contentDescription = null,
-                        modifier = Modifier.padding(end = 8.dp),
+                if (isSheetExpanded) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.LibraryBooks,
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Text(
+                            text = stringResource(MR.strings.label_dictionary),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+
+                    // Dictionary search bar (editable, initialized with OCR text)
+                    SearchBar(
+                        query = searchState.query,
+                        onQueryChange = { query ->
+                            searchScreenModel.updateQuery(query)
+                        },
+                        onSearch = {
+                            searchScreenModel.search()
+                        },
+                        modifier = Modifier,
                     )
-                    Text(
-                        text = stringResource(MR.strings.label_dictionary),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+
+                    FilledTonalButton(
+                        onClick = {
+                            onCopyText()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ContentCopy,
+                            contentDescription = null,
+                        )
+                        Text(
+                            text = stringResource(MR.strings.action_copy),
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+
+                    // Dictionary search results section
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 }
-
-                // Dictionary search bar (editable, initialized with OCR text)
-                SearchBar(
-                    query = searchState.query,
-                    onQueryChange = { query ->
-                        searchScreenModel.updateQuery(query)
-                    },
-                    onSearch = {
-                        searchScreenModel.search()
-                    },
-                    modifier = Modifier,
-                )
-
-                FilledTonalButton(
-                    onClick = {
-                        onCopyText()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.ContentCopy,
-                        contentDescription = null,
-                    )
-                    Text(
-                        text = stringResource(MR.strings.action_copy),
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
-
-                // Dictionary search results section
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 // Dictionary results
                 when {

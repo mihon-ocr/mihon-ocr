@@ -39,7 +39,7 @@ fun ResizableSheet(
 	onDismissRequest: () -> Unit,
 	modifier: Modifier = Modifier,
 	initialValue: SheetValue = SheetValue.PartiallyExpanded,
-	content: @Composable () -> Unit,
+	content: @Composable (Float) -> Unit,
 ) {
 	val density = LocalDensity.current
 	val scope = rememberCoroutineScope()
@@ -86,7 +86,13 @@ fun ResizableSheet(
 			}
 		}
 
-		val sheetHeightDp = with(density) { sheetHeight.value.toDp() }
+		val sheetHeightValue = sheetHeight.value
+		val sheetHeightDp = with(density) { sheetHeightValue.toDp() }
+		val expansionFraction = if (maxHeightPxSheet > 0f) {
+			(sheetHeightValue / maxHeightPxSheet).coerceIn(0f, 1f)
+		} else {
+			0f
+		}
 
 		Box(
 			modifier = Modifier.fillMaxSize(),
@@ -135,7 +141,7 @@ fun ResizableSheet(
 							.weight(1f, fill = true)
 							.fillMaxWidth(),
 					) {
-						content()
+						content(expansionFraction)
 					}
 				}
 			}
