@@ -44,12 +44,21 @@ class OcrRepositoryImpl(
         private const val SPECIAL_TOKEN_THRESHOLD = 5
         private const val MAX_SEQUENCE_LENGTH = 300
         private const val VOCAB_SIZE = 6144
+        private const val MIN_CPU_THREADS = 2
+        private const val MAX_CPU_THREADS = 4
     }
 
     init {
-        val encoderOptions = CompiledModel.Options(Accelerator.CPU)
+        val cpuThreads = resolveCpuThreads()
+        val sharedCpuOptions = cpuThreads?.let { CompiledModel.CpuOptions(numThreads = it) }
+
+        val encoderOptions = CompiledModel.Options(Accelerator.CPU).apply {
+            sharedCpuOptions?.let { cpuOptions = it }
+        }
         // decoder does not support GPU operations
-        val decoderOptions = CompiledModel.Options(Accelerator.CPU)
+        val decoderOptions = CompiledModel.Options(Accelerator.CPU).apply {
+            sharedCpuOptions?.let { cpuOptions = it }
+        }
 
         encoderModel = CompiledModel.create(
             context.assets,
@@ -70,7 +79,8 @@ class OcrRepositoryImpl(
 
         textPostprocessor = TextPostprocessor()
 
-        logcat(LogPriority.INFO) { "OCR models initialized" }
+        val threadInfo = cpuThreads?.let { " (threads=$it)" }.orEmpty()
+        logcat(LogPriority.INFO) { "OCR models initialized$threadInfo" }
     }
 
     override suspend fun recognizeText(image: Bitmap): String {
@@ -343,5 +353,11 @@ class OcrRepositoryImpl(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Error closing OCR models: ${e.message}" }
         }
+    }
+
+    private fun resolveCpuThreads(): Int? {
+        val available = Runtime.getRuntime().availableProcessors()
+        if (available <= 1) return null
+        return available.coerceIn(MIN_CPU_THREADS, MAX_CPU_THREADS)
     }
 }
