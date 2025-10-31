@@ -42,28 +42,48 @@ class DictionarySearchScreenModel(
         val timestamp: Long = System.currentTimeMillis(),
     )
 
-    suspend fun refreshDictionaries() {
+    init {
         loadDictionaries()
-        // Dictionary changes may invalidate cache
-        searchCache.clear()
-        if (mutableState.value.query.isNotBlank()) {
-            search()
+    }
+
+    fun refreshDictionaries() {
+        screenModelScope.launch {
+            try {
+                val dictionaries = dictionaryInteractor.getAllDictionaries()
+                mutableState.update { state ->
+                    state.copy(
+                        dictionaries = dictionaries,
+                        enabledDictionaryIds = dictionaries.filter { it.isEnabled }.map { it.id },
+                        isLoading = false,
+                    )
+                }
+                // Dictionary changes may invalidate cache
+                searchCache.clear()
+                if (mutableState.value.query.isNotBlank()) {
+                    search()
+                }
+            } catch (e: Exception) {
+                mutableState.update { it.copy(isLoading = false) }
+                _events.send(Event.ShowError(e.message ?: "Failed to load dictionaries"))
+            }
         }
     }
 
-    private suspend fun loadDictionaries() {
-        try {
-            val dictionaries = dictionaryInteractor.getAllDictionaries()
-            mutableState.update { state ->
-                state.copy(
-                    dictionaries = dictionaries,
-                    enabledDictionaryIds = dictionaries.filter { it.isEnabled }.map { it.id },
-                    isLoading = false,
-                )
+    private fun loadDictionaries() {
+        screenModelScope.launch {
+            try {
+                val dictionaries = dictionaryInteractor.getAllDictionaries()
+                mutableState.update { state ->
+                    state.copy(
+                        dictionaries = dictionaries,
+                        enabledDictionaryIds = dictionaries.filter { it.isEnabled }.map { it.id },
+                        isLoading = false,
+                    )
+                }
+            } catch (e: Exception) {
+                mutableState.update { it.copy(isLoading = false) }
+                _events.send(Event.ShowError(e.message ?: "Failed to load dictionaries"))
             }
-        } catch (e: Exception) {
-            mutableState.update { it.copy(isLoading = false) }
-            _events.send(Event.ShowError(e.message ?: "Failed to load dictionaries"))
         }
     }
 
