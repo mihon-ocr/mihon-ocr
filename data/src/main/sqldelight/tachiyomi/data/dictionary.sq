@@ -54,29 +54,6 @@ CREATE INDEX dictionary_terms_sequence ON dictionary_terms(sequence);
 CREATE INDEX dictionary_terms_dict_expr_score ON dictionary_terms(dictionary_id, expression, score DESC);
 CREATE INDEX dictionary_terms_dict_read_score ON dictionary_terms(dictionary_id, reading, score DESC);
 
--- FTS4 for fast search (FTS5 not used for device compatibility)
-CREATE VIRTUAL TABLE IF NOT EXISTS dictionary_terms_fts USING fts4(
-    expression,
-    reading,
-    content=dictionary_terms
-);
-
--- Triggers to keep FTS table in sync with main table
-CREATE TRIGGER IF NOT EXISTS dictionary_terms_ai AFTER INSERT ON dictionary_terms BEGIN
-    INSERT INTO dictionary_terms_fts(rowid, expression, reading)
-    VALUES (new._id, new.expression, new.reading);
-END;
-
-CREATE TRIGGER IF NOT EXISTS dictionary_terms_bd BEFORE DELETE ON dictionary_terms BEGIN
-    DELETE FROM dictionary_terms_fts WHERE docid = old._id;
-END;
-
-CREATE TRIGGER IF NOT EXISTS dictionary_terms_bu BEFORE UPDATE ON dictionary_terms BEGIN
-    DELETE FROM dictionary_terms_fts WHERE docid = old._id;
-    INSERT INTO dictionary_terms_fts(rowid, expression, reading)
-    VALUES (new._id, new.expression, new.reading);
-END;
-
 CREATE TABLE dictionary_kanji (
     _id INTEGER PRIMARY KEY AUTOINCREMENT,
     dictionary_id INTEGER NOT NULL,
