@@ -21,6 +21,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -38,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -116,7 +118,7 @@ object SettingsDictionaryScreen : Screen {
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.isImporting,
+                    enabled = !state.isImporting && !state.isDeleting,
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Add,
@@ -158,6 +160,31 @@ object SettingsDictionaryScreen : Screen {
                     }
                 }
 
+                // Delete progress
+                if (state.isDeleting) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(MR.strings.deleting_dictionary),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+
                 // Dictionaries list
                 if (state.isLoading && state.dictionaries.isEmpty()) {
                     CircularProgressIndicator(
@@ -186,6 +213,7 @@ object SettingsDictionaryScreen : Screen {
                         ) { dictionary ->
                             DictionaryItem(
                                 dictionary = dictionary,
+                                isOperationInProgress = state.isImporting || state.isDeleting,
                                 onToggleEnabled = { enabled ->
                                     screenModel.updateDictionary(context, dictionary.copy(isEnabled = enabled))
                                 },
@@ -204,6 +232,7 @@ object SettingsDictionaryScreen : Screen {
 @Composable
 private fun DictionaryItem(
     dictionary: Dictionary,
+    isOperationInProgress: Boolean,
     onToggleEnabled: (Boolean) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -216,7 +245,7 @@ private fun DictionaryItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onToggleEnabled(!dictionary.isEnabled) }
+                .clickable(enabled = !isOperationInProgress) { onToggleEnabled(!dictionary.isEnabled) }
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
@@ -229,6 +258,7 @@ private fun DictionaryItem(
                 Checkbox(
                     checked = dictionary.isEnabled,
                     onCheckedChange = onToggleEnabled,
+                    enabled = !isOperationInProgress,
                 )
 
                 Column(
@@ -259,11 +289,17 @@ private fun DictionaryItem(
                 }
             }
 
-            IconButton(onClick = { showDeleteDialog = true }) {
+            IconButton(
+                onClick = { showDeleteDialog = true },
+                enabled = !isOperationInProgress,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                    disabledContentColor = Color.Gray,
+                ),
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
                     contentDescription = stringResource(MR.strings.action_delete),
-                    tint = MaterialTheme.colorScheme.error,
                 )
             }
         }

@@ -1047,6 +1047,7 @@
     <string name="dictionary_import_fail">Dictionary Import Failed</string>
     <string name="import_dictionary">Import Dictionary</string>
     <string name="importing_dictionary">Importing Dictionary</string>
+    <string name="deleting_dictionary">Deleting Dictionary</string>
     <string name="installed_dictionaries">Installed Dictionaries</string>
     <string name="no_dictionaries">No Dictionaries Installed</string>
     <string name="dictionary_delete_success">Dictionary Successfully Deleted</string>

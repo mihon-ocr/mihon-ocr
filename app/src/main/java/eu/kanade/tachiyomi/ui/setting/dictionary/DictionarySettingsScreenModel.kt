@@ -184,6 +184,7 @@ class DictionarySettingsScreenModel(
 
     fun deleteDictionary(context: Context, dictionaryId: Long) {
         screenModelScope.launch {
+            mutableState.update { it.copy(isDeleting = true, error = null) }
             try {
                 dictionaryInteractor.deleteDictionary(dictionaryId)
                 loadDictionaries()
@@ -191,6 +192,8 @@ class DictionarySettingsScreenModel(
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to delete dictionary" }
                 context.toast(e.message ?: MR.strings.dictionary_delete_fail.getString(context))
+            } finally {
+                mutableState.update { it.copy(isDeleting = false) }
             }
         }
     }
@@ -205,6 +208,7 @@ class DictionarySettingsScreenModel(
         val isLoading: Boolean = true,
         val isImporting: Boolean = false,
         val importProgress: String? = null,
+        val isDeleting: Boolean = false,
         val error: String? = null,
     )
 }
