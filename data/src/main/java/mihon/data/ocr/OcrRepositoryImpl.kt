@@ -146,48 +146,14 @@ class OcrRepositoryImpl(
     @Suppress("NOTHING_TO_INLINE")
     private inline fun normalizePixels(pixels: IntArray, output: FloatArray) {
         var outIndex = 0
-        val size = IMAGE_SIZE * IMAGE_SIZE
+        for (pixel in pixels) {
+            val r = ((pixel shr 16) and 0xFF)
+            val g = ((pixel shr 8) and 0xFF)
+            val b = (pixel and 0xFF)
 
-        // Process 4 pixels at a time for better cache utilization
-        val limit = size - 3
-        var i = 0
-        while (i < limit) {
-            // Pixel 1
-            var pixel = pixels[i]
-            output[outIndex] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 1] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 2] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-
-            // Pixel 2
-            pixel = pixels[i + 1]
-            output[outIndex + 3] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 4] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 5] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-
-            // Pixel 3
-            pixel = pixels[i + 2]
-            output[outIndex + 6] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 7] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 8] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-
-            // Pixel 4
-            pixel = pixels[i + 3]
-            output[outIndex + 9] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 10] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 11] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-
-            i += 4
-            outIndex += 12
-        }
-
-        // Handle remaining pixels
-        while (i < size) {
-            val pixel = pixels[i]
-            output[outIndex] = ((pixel shr 16) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 1] = ((pixel shr 8) and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex + 2] = (pixel and 0xFF) * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            i++
-            outIndex += 3
+            output[outIndex++] = r * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex++] = g * NORMALIZATION_FACTOR - NORMALIZED_MEAN
+            output[outIndex++] = b * NORMALIZATION_FACTOR - NORMALIZED_MEAN
         }
     }
 
@@ -259,7 +225,6 @@ class OcrRepositoryImpl(
 
     /**
      * Find the token with maximum logit value for the current sequence position.
-     * Optimized with manual loop unrolling for better performance.
      */
     @Suppress("NOTHING_TO_INLINE")
     private inline fun findMaxLogitToken(logits: FloatArray, seqLen: Int): Int {
@@ -269,39 +234,12 @@ class OcrRepositoryImpl(
         var maxLogit = Float.NEGATIVE_INFINITY
         var maxToken = PAD_TOKEN_ID
 
-        // Process 8 values at a time for better instruction-level parallelism
-        val limit = VOCAB_SIZE - 7
-        var vocabIdx = 0
-
-        while (vocabIdx < limit) {
-            val offset = logitsOffset + vocabIdx
-
-            // Unroll 8 comparisons
-            var logit = logits[offset]
-            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx }
-
-            logit = logits[offset + 1]
-            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 1 }
-
-            logit = logits[offset + 2]
-            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 2 }
-
-            logit = logits[offset + 3]
-            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 3 }
-
-            logit = logits[offset + 4]
-            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 4 }
-
-            logit = logits[offset + 5]
-            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 5 }
-
-            logit = logits[offset + 6]
-            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 6 }
-
-            logit = logits[offset + 7]
-            if (logit > maxLogit) { maxLogit = logit; maxToken = vocabIdx + 7 }
-
-            vocabIdx += 8
+        for (vocabIdx in 0 until VOCAB_SIZE) {
+            val logit = logits[logitsOffset + vocabIdx]
+            if (logit > maxLogit) {
+                maxLogit = logit
+                maxToken = vocabIdx
+            }
         }
 
         return maxToken
