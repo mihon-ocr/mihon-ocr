@@ -172,31 +172,30 @@ WHERE dictionary_id = :dictionaryId;
 -- Term queries
 
 searchTerms:
-SELECT T.*
-FROM dictionary_terms AS T
-JOIN dictionaries AS D ON T.dictionary_id = D._id
-WHERE T.dictionary_id IN :dictionaryIds
-  AND D.is_enabled = 1
-  AND (
-    T.expression = :query
-    OR T.reading = :query
-    OR T.expression LIKE :query || '%'
-    OR T.reading LIKE :query || '%'
-    OR T._id IN (
-      SELECT rowid FROM dictionary_terms_fts
-      WHERE dictionary_terms_fts MATCH :query
-    )
-  )
-ORDER BY
-  CASE
-    WHEN T.expression = :query THEN 0
-    WHEN T.reading = :query THEN 1
-    WHEN T.expression LIKE :query || '%' THEN 2
-    WHEN T.reading LIKE :query || '%' THEN 3
-    ELSE 4
-  END,
-  T.score DESC
-LIMIT :limit;
+SELECT _id, dictionary_id, expression, reading, definition_tags, rules, score, glossary, sequence, term_tags
+FROM (
+  -- Exact expression match (highest priority)
+  SELECT T.*, 0 AS match_priority
+  FROM dictionary_terms AS T
+  JOIN dictionaries AS D ON T.dictionary_id = D._id
+  WHERE T.expression = :query
+    AND T.dictionary_id IN :dictionaryIds
+    AND D.is_enabled = 1
+
+  UNION
+
+  -- Exact reading match (second priority)
+  SELECT T.*, 1 AS match_priority
+  FROM dictionary_terms AS T
+  JOIN dictionaries AS D ON T.dictionary_id = D._id
+  WHERE T.reading = :query
+    AND T.dictionary_id IN :dictionaryIds
+    AND D.is_enabled = 1
+    AND T.expression != :query
+
+  ORDER BY match_priority ASC, score DESC
+  LIMIT :limit
+);
 
 getTermsByExpression:
 SELECT T.*
