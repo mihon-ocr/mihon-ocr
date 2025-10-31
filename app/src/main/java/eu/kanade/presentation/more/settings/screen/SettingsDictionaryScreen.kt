@@ -211,6 +211,7 @@ object SettingsDictionaryScreen : Screen {
                         ) { dictionary ->
                             DictionaryItem(
                                 dictionary = dictionary,
+                                isOperationInProgress = state.isImporting || state.isDeleting,
                                 onToggleEnabled = { enabled ->
                                     screenModel.updateDictionary(context, dictionary.copy(isEnabled = enabled))
                                 },
@@ -229,6 +230,7 @@ object SettingsDictionaryScreen : Screen {
 @Composable
 private fun DictionaryItem(
     dictionary: Dictionary,
+    isOperationInProgress: Boolean,
     onToggleEnabled: (Boolean) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -241,7 +243,7 @@ private fun DictionaryItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onToggleEnabled(!dictionary.isEnabled) }
+                .clickable(enabled = !isOperationInProgress) { onToggleEnabled(!dictionary.isEnabled) }
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
@@ -254,6 +256,7 @@ private fun DictionaryItem(
                 Checkbox(
                     checked = dictionary.isEnabled,
                     onCheckedChange = onToggleEnabled,
+                    enabled = !isOperationInProgress,
                 )
 
                 Column(
@@ -284,7 +287,10 @@ private fun DictionaryItem(
                 }
             }
 
-            IconButton(onClick = { showDeleteDialog = true }) {
+            IconButton(
+                onClick = { showDeleteDialog = true },
+                enabled = !isOperationInProgress,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
                     contentDescription = stringResource(MR.strings.action_delete),
