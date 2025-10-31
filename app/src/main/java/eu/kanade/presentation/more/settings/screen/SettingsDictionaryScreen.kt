@@ -116,7 +116,7 @@ object SettingsDictionaryScreen : Screen {
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.isImporting,
+                    enabled = !state.isImporting && !state.isDeleting,
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Add,
@@ -154,6 +154,31 @@ object SettingsDictionaryScreen : Screen {
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                        }
+                    }
+                }
+
+                // Delete progress
+                if (state.isDeleting) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(MR.strings.deleting_dictionary),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
                     }
                 }
