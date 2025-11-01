@@ -21,6 +21,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -38,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -290,11 +292,14 @@ private fun DictionaryItem(
             IconButton(
                 onClick = { showDeleteDialog = true },
                 enabled = !isOperationInProgress,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                    disabledContentColor = Color.Gray,
+                ),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
                     contentDescription = stringResource(MR.strings.action_delete),
-                    tint = MaterialTheme.colorScheme.error,
                 )
             }
         }
