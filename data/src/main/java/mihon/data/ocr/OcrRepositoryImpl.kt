@@ -9,6 +9,7 @@ import com.google.ai.edge.litert.TensorBuffer
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.system.measureNanoTime
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import mihon.domain.ocr.repository.OcrRepository
@@ -84,22 +85,49 @@ class OcrRepositoryImpl(
     }
 
     override suspend fun recognizeText(image: Bitmap): String {
+        val startTime = System.nanoTime()
         val rawText = inferenceMutex.withLock {
             require(!image.isRecycled) { "Input bitmap is recycled" }
 
             val encoderInputBuffer = encoderInputBuffers[0]
-            preprocessImage(image, encoderInputBuffer)
+            val preprocessTime = measureNanoTime {
+                preprocessImage(image, encoderInputBuffer)
+            }
+            logcat(LogPriority.INFO) { "OCR Perf Test: preprocessImage took ${preprocessTime / 1_000_000} ms" }
 
             // Run encoder and get hidden states
-            val encoderHiddenStates = runEncoder()
+            val encoderHiddenStates: FloatArray
+            val encoderTime = measureNanoTime {
+                encoderHiddenStates = runEncoder()
+            }
+            logcat(LogPriority.INFO) { "OCR Perf Test: runEncoder took ${encoderTime / 1_000_000} ms" }
 
             // Run decoder with encoder states
-            val tokenCount = runDecoder(encoderHiddenStates)
+            val tokenCount: Int
+            val decoderTime = measureNanoTime {
+                tokenCount = runDecoder(encoderHiddenStates)
+            }
+            logcat(LogPriority.INFO) { "OCR Perf Test: runDecoder took ${decoderTime / 1_000_000} ms" }
 
-            decodeTokens(tokenBuffer, tokenCount)
+            val decodedText: String
+            val decodeTokensTime = measureNanoTime {
+                decodedText = decodeTokens(tokenBuffer, tokenCount)
+            }
+            logcat(LogPriority.INFO) { "OCR Perf Test: decodeTokens took ${decodeTokensTime / 1_000_000} ms" }
+
+            decodedText
         }
 
-        return textPostprocessor.postprocess(rawText)
+        val postprocessedText: String
+        val postprocessTime = measureNanoTime {
+            postprocessedText = textPostprocessor.postprocess(rawText)
+        }
+        logcat(LogPriority.INFO) { "OCR Perf Test: postprocess took ${postprocessTime / 1_000_000} ms" }
+
+        val totalTime = (System.nanoTime() - startTime) / 1_000_000
+        logcat(LogPriority.INFO) { "OCR Perf Test: recognizeText total time: $totalTime ms" }
+
+        return postprocessedText
     }
 
     /**
@@ -165,9 +193,8 @@ class OcrRepositoryImpl(
         val outputBuffers = encoderOutputBuffers
         encoderModel.run(encoderInputBuffers, outputBuffers)
 
-        // Read and create persistent copy
-        val encoderStates = outputBuffers[0].readFloat()
-        return encoderStates
+        // Read and create persistent copy for decoder
+        return encoderOutputBuffers[0].readFloat()
     }
 
     private fun runDecoder(encoderHiddenStates: FloatArray): Int {
@@ -179,7 +206,10 @@ class OcrRepositoryImpl(
         inputIdsArray.fill(PAD_TOKEN_ID.toLong())
         inputIdsArray[0] = START_TOKEN_ID.toLong()
 
+        var totalInferenceTime = 0L
+
         val decoderInputs = decoderInputBuffers
+        // Write encoder states once - they don't change during decoding
         decoderInputs[1].writeFloat(encoderHiddenStates)
 
         val decoderOutputs = decoderOutputBuffers
@@ -197,8 +227,10 @@ class OcrRepositoryImpl(
             // Write to pre-allocated buffers (reused across iterations)
             decoderInput.writeLong(inputIdsArray)
 
-            // Run inference with reused buffers
-            decoderModel.run(decoderInputs, decoderOutputs)
+            // Run inference
+            totalInferenceTime += measureNanoTime {
+                decoderModel.run(decoderInputs, decoderOutputs)
+            }
 
             // Extract next token
             val logits = decoderOutput.readFloat()
@@ -219,6 +251,8 @@ class OcrRepositoryImpl(
                 break
             }
         }
+
+        logcat(LogPriority.INFO) { "OCR Perf Test: decoderModel.run sub-time took ${totalInferenceTime / 1_000_000} ms" }
 
         return tokenCount
     }
