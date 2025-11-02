@@ -22,8 +22,6 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -42,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -268,14 +265,6 @@ internal fun DictionaryTermCard(
             // Check if this is a "forms" entry - if so, show it differently
             val isFormsEntry = term.definitionTags?.contains("forms") == true
 
-            val glossaryData = remember(term.glossary, isFormsEntry) {
-                GlossaryFormatter.parseGlossary(term.glossary, isFormsEntry)
-            }
-
-            val formattedItems = remember(glossaryData) {
-                GlossaryFormatter.formatForDisplay(glossaryData)
-            }
-
             // Display definition tags if present and not forms
             val definitionTags = term.definitionTags
             if (!isFormsEntry && !definitionTags.isNullOrBlank()) {
@@ -287,154 +276,11 @@ internal fun DictionaryTermCard(
                 )
             }
 
-            // Display formatted glossary items
-            formattedItems.forEach { item ->
-                when (item) {
-                    is FormattedGlossaryItem.PartOfSpeech -> {
-                        Text(
-                            text = item.text,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                            fontStyle = FontStyle.Italic,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
-                        )
-                    }
-                    is FormattedGlossaryItem.Definition -> {
-                        Row(
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            Text(
-                                text = "◦ ",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                text = item.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                    }
-                    is FormattedGlossaryItem.MultipleDefinitions -> {
-                        item.definitions.forEach { def ->
-                            Row(
-                                modifier = Modifier.padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.Top,
-                            ) {
-                                Text(
-                                    text = "◦ ",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                Text(
-                                    text = def,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            }
-                        }
-                    }
-                    is FormattedGlossaryItem.AlternativeForms -> {
-                        Row(
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Forms: ",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = item.forms.joinToString(", "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontStyle = FontStyle.Italic,
-                            )
-                        }
-                    }
-                    is FormattedGlossaryItem.Info -> {
-                        Row(
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp).padding(end = 4.dp),
-                                tint = MaterialTheme.colorScheme.tertiary,
-                            )
-                            Text(
-                                text = item.text,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                fontStyle = FontStyle.Italic,
-                            )
-                        }
-                    }
-                    is FormattedGlossaryItem.Reference -> {
-                        Row(
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowForward,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp).padding(end = 4.dp),
-                                tint = MaterialTheme.colorScheme.secondary,
-                            )
-                            val annotatedString = buildAnnotatedString {
-                                // Find the link text in the full text
-                                val startIndex = item.fullText.indexOf(item.linkText)
-                                if (startIndex != -1) {
-                                    val beforeLink = item.fullText.substring(0, startIndex)
-                                    val afterLink = item.fullText.substring(startIndex + item.linkText.length)
-
-                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
-                                        append(beforeLink)
-                                    }
-
-                                    pushStringAnnotation(tag = "LINK", annotation = item.linkQuery)
-                                    withStyle(
-                                        SpanStyle(
-                                            color = MaterialTheme.colorScheme.primary,
-                                            textDecoration = TextDecoration.Underline,
-                                            fontWeight = FontWeight.Medium,
-                                        )
-                                    ) {
-                                        append(item.linkText)
-                                    }
-                                    pop()
-
-                                    withStyle(SpanStyle(
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 11.sp,
-                                    )) {
-                                        append(afterLink)
-                                    }
-                                } else {
-                                    // Fallback if parsing fails
-                                    append(item.fullText)
-                                }
-                            }
-
-                            ClickableText(
-                                text = annotatedString,
-                                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface),
-                                onClick = { offset ->
-                                    annotatedString.getStringAnnotations(
-                                        tag = "LINK",
-                                        start = offset,
-                                        end = offset,
-                                    ).firstOrNull()?.let { annotation ->
-                                        onQueryChange(annotation.item)
-                                        onSearch()
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
-            }
+            GlossarySection(
+                entries = term.glossary,
+                isFormsEntry = isFormsEntry,
+                modifier = Modifier.padding(vertical = 2.dp),
+            )
 
             // Dictionary source
             Spacer(modifier = Modifier.height(8.dp))

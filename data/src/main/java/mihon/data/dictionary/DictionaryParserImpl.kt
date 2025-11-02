@@ -6,17 +6,26 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import mihon.domain.dictionary.model.DictionaryIndex
 import mihon.domain.dictionary.model.DictionaryKanji
 import mihon.domain.dictionary.model.DictionaryKanjiMeta
 import mihon.domain.dictionary.model.DictionaryTag
 import mihon.domain.dictionary.model.DictionaryTerm
 import mihon.domain.dictionary.model.DictionaryTermMeta
+import mihon.domain.dictionary.model.GlossaryElementAttributes
+import mihon.domain.dictionary.model.GlossaryEntry
+import mihon.domain.dictionary.model.GlossaryImageAttributes
+import mihon.domain.dictionary.model.GlossaryNode
+import mihon.domain.dictionary.model.GlossaryTag
 import mihon.domain.dictionary.model.KanjiMetaMode
 import mihon.domain.dictionary.model.TermMetaMode
 import mihon.domain.dictionary.service.DictionaryParseException
@@ -101,8 +110,11 @@ class DictionaryParserImpl : DictionaryParser {
         return when (element) {
             is JsonPrimitive -> element.contentOrNull
             is JsonArray -> {
-                if (element.isEmpty()) null
-                else element.joinToString(" ") { it.jsonPrimitive.content }
+                if (element.isEmpty()) {
+                    null
+                } else {
+                    element.joinToString(" ") { it.jsonPrimitive.content }
+                }
             }
             else -> null
         }
@@ -110,7 +122,7 @@ class DictionaryParserImpl : DictionaryParser {
 
     private fun parseTermBankV1(array: JsonArray): DictionaryTerm {
         // V1 format: [expression, reading, definitionTags, rules, score, ...glossary]
-        val glossary = array.drop(5).map { it.jsonPrimitive.content }
+        val glossary = array.drop(5).map { GlossaryEntry.TextDefinition(it.jsonPrimitive.content) }
         return DictionaryTerm(
             dictionaryId = 0L,
             expression = array[0].jsonPrimitive.content,
@@ -127,22 +139,7 @@ class DictionaryParserImpl : DictionaryParser {
     private fun parseTermBankV3(array: JsonArray): DictionaryTerm {
         // V3 format: [expression, reading, definitionTags, rules, score, glossary[], sequence, termTags]
         val glossaryArray = array[5].jsonArray
-        val glossary = glossaryArray.map {
-            when (it) {
-                is JsonPrimitive -> it.content
-                is JsonObject -> {
-                    // Handle different glossary object types: text, image, structured-content
-                    val type = it["type"]?.jsonPrimitive?.contentOrNull
-                    when (type) {
-                        "text" -> it["text"]?.jsonPrimitive?.contentOrNull ?: it.toString()
-                        "structured-content", "image" -> it.toString()
-                        else -> it.toString()
-                    }
-                }
-                is JsonArray -> it.toString() // Deinflection array
-                else -> it.toString()
-            }
-        }
+        val glossary = glossaryArray.map { parseGlossaryEntry(it) }
 
         return DictionaryTerm(
             dictionaryId = 0L,
@@ -155,6 +152,149 @@ class DictionaryParserImpl : DictionaryParser {
             sequence = array.getOrNull(6)?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
             termTags = array.getOrNull(7)?.let { parseStringOrArray(it) },
         )
+    }
+
+    private fun parseGlossaryEntry(element: JsonElement): GlossaryEntry {
+        return when (element) {
+            is JsonPrimitive -> GlossaryEntry.TextDefinition(element.content)
+            is JsonArray -> parseDeinflectionEntry(element)
+            is JsonObject -> parseGlossaryObject(element)
+            else -> GlossaryEntry.Unknown(element.toString())
+        }
+    }
+
+    private fun parseDeinflectionEntry(array: JsonArray): GlossaryEntry {
+        if (array.size < 2) {
+            return GlossaryEntry.Unknown(array.toString())
+        }
+
+        val baseForm = array[0].jsonPrimitive.contentOrNull
+        val rulesJson = array[1]
+        val rules = (rulesJson as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
+
+        return if (baseForm != null && rules != null) {
+            GlossaryEntry.Deinflection(baseForm, rules)
+        } else {
+            GlossaryEntry.Unknown(array.toString())
+        }
+    }
+
+    private fun parseGlossaryObject(obj: JsonObject): GlossaryEntry {
+        val type = obj["type"]?.jsonPrimitive?.contentOrNull
+        return when (type) {
+            "text" -> GlossaryEntry.TextDefinition(obj["text"]?.jsonPrimitive?.contentOrNull ?: "")
+            "image" -> parseImageEntry(obj) ?: GlossaryEntry.Unknown(obj.toString())
+            "structured-content" -> {
+                val content = obj["content"] ?: return GlossaryEntry.StructuredContent(emptyList())
+                val nodes = parseStructuredNodes(content)
+                GlossaryEntry.StructuredContent(nodes)
+            }
+            else -> GlossaryEntry.Unknown(obj.toString())
+        }
+    }
+
+    private fun parseImageEntry(obj: JsonObject): GlossaryEntry.ImageDefinition? {
+        val path = obj["path"]?.jsonPrimitive?.contentOrNull ?: return null
+        val attributes = GlossaryImageAttributes(
+            path = path,
+            width = obj["width"]?.jsonPrimitive?.intOrNull,
+            height = obj["height"]?.jsonPrimitive?.intOrNull,
+            title = obj["title"]?.jsonPrimitive?.contentOrNull,
+            alt = obj["alt"]?.jsonPrimitive?.contentOrNull,
+            description = obj["description"]?.jsonPrimitive?.contentOrNull,
+            pixelated = obj["pixelated"]?.jsonPrimitive?.booleanOrNull,
+            imageRendering = obj["imageRendering"]?.jsonPrimitive?.contentOrNull,
+            appearance = obj["appearance"]?.jsonPrimitive?.contentOrNull,
+            background = obj["background"]?.jsonPrimitive?.booleanOrNull,
+            collapsed = obj["collapsed"]?.jsonPrimitive?.booleanOrNull,
+            collapsible = obj["collapsible"]?.jsonPrimitive?.booleanOrNull,
+            verticalAlign = obj["verticalAlign"]?.jsonPrimitive?.contentOrNull,
+            border = obj["border"]?.jsonPrimitive?.contentOrNull,
+            borderRadius = obj["borderRadius"]?.jsonPrimitive?.contentOrNull,
+            sizeUnits = obj["sizeUnits"]?.jsonPrimitive?.contentOrNull,
+            dataAttributes = parseStringMap(obj["data"]?.jsonObject),
+        )
+        return GlossaryEntry.ImageDefinition(attributes)
+    }
+
+    private fun parseStructuredNodes(element: JsonElement): List<GlossaryNode> {
+        return when (element) {
+            is JsonPrimitive -> listOf(GlossaryNode.Text(element.content))
+            is JsonArray -> element.flatMap { parseStructuredNodes(it) }
+            is JsonObject -> parseStructuredObject(element)?.let { listOf(it) } ?: emptyList()
+            else -> emptyList()
+        }
+    }
+
+    private fun parseStructuredObject(obj: JsonObject): GlossaryNode? {
+        val rawTag = obj["tag"]?.jsonPrimitive?.contentOrNull
+        if (rawTag == "br") {
+            return GlossaryNode.LineBreak
+        }
+
+        val tag = GlossaryTag.fromRaw(rawTag)
+        val children = obj["content"]?.let { parseStructuredNodes(it) } ?: emptyList()
+        val attributes = parseElementAttributes(obj)
+
+        return GlossaryNode.Element(
+            tag = tag,
+            children = children,
+            attributes = attributes,
+        )
+    }
+
+    private fun parseElementAttributes(obj: JsonObject): GlossaryElementAttributes {
+        val dataAttributes = parseStringMap(obj["data"]?.jsonObject)
+        val styleAttributes = parseStringMap(obj["style"]?.jsonObject)
+        val properties = parseProperties(obj)
+
+        return GlossaryElementAttributes(
+            properties = properties,
+            dataAttributes = dataAttributes,
+            style = styleAttributes,
+        )
+    }
+
+    private fun parseStringMap(obj: JsonObject?): Map<String, String> {
+        if (obj == null) return emptyMap()
+        val result = mutableMapOf<String, String>()
+        obj.forEach { (key, value) ->
+            val stringValue = value.stringValueOrNull()
+            if (stringValue != null) {
+                result[key] = stringValue
+            }
+        }
+        return result
+    }
+
+    private fun parseProperties(obj: JsonObject): Map<String, String> {
+        val excludedKeys = setOf("tag", "content", "data", "style")
+        val result = mutableMapOf<String, String>()
+        obj.forEach { (key, value) ->
+            if (key in excludedKeys) return@forEach
+            val stringValue = value.stringValueOrNull()
+            if (stringValue != null) {
+                result[key] = stringValue
+            }
+        }
+        return result
+    }
+
+    private fun JsonElement?.stringValueOrNull(): String? {
+        if (this == null) return null
+        return when (this) {
+            is JsonPrimitive -> {
+                val stringContent = this.contentOrNull
+                when {
+                    stringContent != null -> stringContent
+                    this.booleanOrNull != null -> this.booleanOrNull?.toString()
+                    this.longOrNull != null -> this.longOrNull?.toString()
+                    this.doubleOrNull != null -> this.doubleOrNull?.toString()
+                    else -> this.content
+                }
+            }
+            else -> this.toString()
+        }
     }
 
     override fun parseKanjiBank(jsonString: String, version: Int): List<DictionaryKanji> {

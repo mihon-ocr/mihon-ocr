@@ -1,21 +1,24 @@
 package mihon.data.dictionary
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import mihon.domain.dictionary.model.Dictionary
 import mihon.domain.dictionary.model.DictionaryKanji
 import mihon.domain.dictionary.model.DictionaryKanjiMeta
 import mihon.domain.dictionary.model.DictionaryTag
 import mihon.domain.dictionary.model.DictionaryTerm
 import mihon.domain.dictionary.model.DictionaryTermMeta
-import mihon.domain.dictionary.model.Dictionary
+import mihon.domain.dictionary.model.GlossaryEntry
 import mihon.domain.dictionary.repository.DictionaryRepository
 import tachiyomi.data.DatabaseHandler
-import kotlinx.serialization.json.Json
 
 class DictionaryRepositoryImpl(
     private val handler: DatabaseHandler,
 ) : DictionaryRepository {
 
     private val json = Json { ignoreUnknownKeys = true }
+    private val glossarySerializer = ListSerializer(GlossaryEntry.serializer())
 
     // Dictionary operations
 
@@ -124,7 +127,7 @@ class DictionaryRepositoryImpl(
                         definition_tags = term.definitionTags,
                         rules = term.rules,
                         score = term.score.toLong(),
-                        glossary = json.encodeToString(term.glossary),
+                        glossary = json.encodeToString(glossarySerializer, term.glossary),
                         sequence = term.sequence,
                         term_tags = term.termTags,
                     )

@@ -1,5 +1,9 @@
 package mihon.data.dictionary
 
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -8,6 +12,7 @@ import mihon.domain.dictionary.model.DictionaryKanjiMeta
 import mihon.domain.dictionary.model.DictionaryTag
 import mihon.domain.dictionary.model.DictionaryTerm
 import mihon.domain.dictionary.model.DictionaryTermMeta
+import mihon.domain.dictionary.model.GlossaryEntry
 import mihon.domain.dictionary.model.KanjiMetaMode
 import mihon.domain.dictionary.model.TermMetaMode
 import tachiyomi.data.Dictionary_kanji
@@ -37,7 +42,7 @@ fun Dictionary_terms.toDomain(): DictionaryTerm {
         definitionTags = definition_tags,
         rules = rules,
         score = score.toInt(),
-        glossary = parseJsonArray(glossary),
+        glossary = parseGlossary(glossary),
         sequence = sequence,
         termTags = term_tags,
     )
@@ -51,7 +56,7 @@ fun Dictionary_kanji.toDomain(): DictionaryKanji {
         onyomi = onyomi,
         kunyomi = kunyomi,
         tags = tags,
-        meanings = parseJsonArray(meanings),
+        meanings = parseStringList(meanings),
         stats = stats?.let { parseJsonObject(it) },
     )
 }
@@ -82,60 +87,95 @@ private val jsonParser = Json {
     isLenient = true
 }
 
-private fun parseJsonArray(inputJson: String?): List<String> {
-    if (inputJson == null || inputJson.isEmpty() || inputJson == "[]") return emptyList()
+private val glossarySerializer = ListSerializer(GlossaryEntry.serializer())
+private val legacyStringListSerializer = ListSerializer(String.serializer())
+
+private fun parseGlossary(inputJson: String?): List<GlossaryEntry> {
+    if (inputJson.isNullOrBlank() || inputJson == "[]") return emptyList()
 
     return try {
-        val jsonArray = jsonParser.parseToJsonElement(inputJson).jsonArray
-        jsonArray.map { element ->
-            element.jsonPrimitive.content
-        }
-    } catch (e: Exception) {
-        // Fallback to simple parsing if JSON parsing fails
-        val trimmed = inputJson.trim().removePrefix("[").removeSuffix("]")
-        if (trimmed.isEmpty()) {
-            emptyList()
-        } else {
-            // For complex nested JSON, try to extract quoted strings properly
-            val result = mutableListOf<String>()
-            var inString = false
-            var escaped = false
-            var depth = 0
-            val currentToken = StringBuilder()
+        jsonParser.decodeFromString(glossarySerializer, inputJson)
+    } catch (e: SerializationException) {
+        parseLegacyGlossary(inputJson)
+    } catch (e: IllegalArgumentException) {
+        parseLegacyGlossary(inputJson)
+    }
+}
 
-            for (char in trimmed) {
-                when {
-                    escaped -> {
-                        currentToken.append(char)
-                        escaped = false
-                    }
-                    char == '\\' -> {
-                        escaped = true
-                        currentToken.append(char)
-                    }
-                    char == '"' -> {
-                        inString = !inString
-                        if (depth == 0 && !inString && currentToken.isNotEmpty()) {
-                            result.add(currentToken.toString())
-                            currentToken.clear()
-                        }
-                    }
-                    inString -> {
-                        currentToken.append(char)
-                    }
-                    char == '{' || char == '[' -> {
-                        depth++
-                        if (depth == 1) currentToken.clear()
-                    }
-                    char == '}' || char == ']' -> {
-                        depth--
+private fun parseLegacyGlossary(inputJson: String): List<GlossaryEntry> {
+    val legacy = try {
+        jsonParser.decodeFromString(legacyStringListSerializer, inputJson)
+    } catch (_: SerializationException) {
+        parseLegacyStringList(inputJson)
+    } catch (_: IllegalArgumentException) {
+        parseLegacyStringList(inputJson)
+    }
+
+    if (legacy.isEmpty()) return emptyList()
+
+    return legacy.map { GlossaryEntry.TextDefinition(it) }
+}
+
+private fun parseStringList(inputJson: String?): List<String> {
+    if (inputJson.isNullOrBlank() || inputJson == "[]") return emptyList()
+
+    return try {
+        jsonParser.decodeFromString(legacyStringListSerializer, inputJson)
+    } catch (_: SerializationException) {
+        parseLegacyStringList(inputJson)
+    } catch (_: IllegalArgumentException) {
+        parseLegacyStringList(inputJson)
+    }
+}
+
+private fun parseLegacyStringList(inputJson: String): List<String> {
+    val trimmed = inputJson.trim().removePrefix("[").removeSuffix("]")
+    if (trimmed.isEmpty()) return emptyList()
+
+    val result = mutableListOf<String>()
+    var inString = false
+    var escaped = false
+    var depth = 0
+    val currentToken = StringBuilder()
+
+    for (char in trimmed) {
+        when {
+            escaped -> {
+                currentToken.append(char)
+                escaped = false
+            }
+            char == '\\' -> {
+                escaped = true
+                if (inString) {
+                    currentToken.append(char)
+                }
+            }
+            char == '"' -> {
+                inString = !inString
+                if (depth == 0) {
+                    if (!inString && currentToken.isNotEmpty()) {
+                        result.add(currentToken.toString())
+                        currentToken.clear()
+                    } else if (inString) {
+                        currentToken.clear()
                     }
                 }
             }
-
-            result
+            inString -> currentToken.append(char)
+            char == '{' || char == '[' -> {
+                depth++
+                if (depth == 1) {
+                    currentToken.clear()
+                }
+            }
+            char == '}' || char == ']' -> {
+                depth--
+                if (depth < 0) depth = 0
+            }
         }
     }
+
+    return result
 }
 
 private fun parseJsonObject(json: String): Map<String, String> {
