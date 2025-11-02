@@ -46,7 +46,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.tachiyomi.ui.dictionary.DictionarySearchScreenModel
 import mihon.domain.dictionary.model.Dictionary
@@ -280,6 +279,13 @@ internal fun DictionaryTermCard(
                 entries = term.glossary,
                 isFormsEntry = isFormsEntry,
                 modifier = Modifier.padding(vertical = 2.dp),
+                onLinkClick = { linkText ->
+                    val query = linkText.trim()
+                    if (query.isNotEmpty()) {
+                        onQueryChange(query)
+                        onSearch()
+                    }
+                },
             )
 
             // Dictionary source
