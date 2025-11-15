@@ -290,6 +290,11 @@ dependencies {
     implementation(libs.leakcanary.plumber)
 
     testImplementation(kotlinx.coroutines.test)
+
+    androidTestImplementation(androidx.test.ext)
+    androidTestImplementation(libs.core.ktx)
+    androidTestImplementation(libs.runner)
+    androidTestImplementation(kotlinx.coroutines.test)
 }
 
 androidComponents {
