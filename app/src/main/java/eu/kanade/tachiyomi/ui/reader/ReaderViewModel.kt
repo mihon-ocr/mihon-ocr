@@ -811,7 +811,7 @@ class ReaderViewModel @JvmOverloads constructor(
         viewModelScope.launchIO {
                 mutableState.update { it.copy(isProcessingOcr = true, ocrSelectionMode = false) }
             try {
-                val text = ocrProcessor.getText(bitmap).trim()
+                val text = ocrProcessor.getText(bitmap)
                 withUIContext {
                     if (text.isNotBlank()) {
                         mutableState.update { it.copy(dialog = Dialog.OcrResult(text), isProcessingOcr = false) }

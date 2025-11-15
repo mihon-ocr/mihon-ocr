@@ -14,7 +14,7 @@ object OcrModule {
     @Volatile
     private var ocrRepository: OcrRepository? = null
 
-    fun provideOcrRepository(context: Context): OcrRepository {
+    private fun provideOcrRepository(context: Context): OcrRepository {
         return ocrRepository ?: synchronized(this) {
             ocrRepository ?: createOcrRepository(context).also {
                 ocrRepository = it
