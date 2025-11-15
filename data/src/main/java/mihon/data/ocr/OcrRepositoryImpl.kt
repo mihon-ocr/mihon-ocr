@@ -22,11 +22,12 @@ class OcrRepositoryImpl(
     private val encoderModel: CompiledModel
     private val decoderModel: CompiledModel
     private val textPostprocessor: TextPostprocessor
-    private val encoderInputBuffers: List<TensorBuffer>
-    private val encoderOutputBuffers: List<TensorBuffer>
-    private val decoderInputBuffers: List<TensorBuffer>
-    private val decoderOutputBuffers: List<TensorBuffer>
-    private val inputIdsArray: LongArray = LongArray(MAX_SEQUENCE_LENGTH)
+    private val encoderImageInput: TensorBuffer
+    private val encoderHiddenStatesOutput: TensorBuffer
+    private val decoderHiddenStatesInput: TensorBuffer
+    private val decoderInputIdsInput: TensorBuffer
+    private val decoderLogitsOutput: TensorBuffer
+    private val inputIdsArray: IntArray = IntArray(MAX_SEQUENCE_LENGTH)
     private val inferenceMutex = Mutex() // Guards shared inference buffers
     private val pixelsBuffer = IntArray(IMAGE_SIZE * IMAGE_SIZE)
     private val normalizedBuffer = FloatArray(IMAGE_SIZE * IMAGE_SIZE * 3)
@@ -73,10 +74,18 @@ class OcrRepositoryImpl(
             decoderOptions,
         )
 
-        encoderInputBuffers = encoderModel.createInputBuffers()
-        encoderOutputBuffers = encoderModel.createOutputBuffers()
-        decoderInputBuffers = decoderModel.createInputBuffers()
-        decoderOutputBuffers = decoderModel.createOutputBuffers()
+        val encoderInputBuffers = encoderModel.createInputBuffers()
+        val encoderOutputBuffers = encoderModel.createOutputBuffers()
+        val decoderInputBuffers = decoderModel.createInputBuffers()
+        val decoderOutputBuffers = decoderModel.createOutputBuffers()
+
+        // IO may be swapped depending on model version
+        // Checking with Netron is recommended
+        encoderImageInput = encoderInputBuffers[0]
+        encoderHiddenStatesOutput = encoderOutputBuffers[0]
+        decoderHiddenStatesInput = decoderInputBuffers[0]
+        decoderInputIdsInput = decoderInputBuffers[1]
+        decoderLogitsOutput = decoderOutputBuffers[0]
 
         textPostprocessor = TextPostprocessor()
 
@@ -89,9 +98,8 @@ class OcrRepositoryImpl(
         val rawText = inferenceMutex.withLock {
             require(!image.isRecycled) { "Input bitmap is recycled" }
 
-            val encoderInputBuffer = encoderInputBuffers[0]
             val preprocessTime = measureNanoTime {
-                preprocessImage(image, encoderInputBuffer)
+                preprocessImage(image, encoderImageInput)
             }
             logcat(LogPriority.INFO) { "OCR Perf Test: preprocessImage took ${preprocessTime / 1_000_000} ms" }
 
@@ -169,7 +177,6 @@ class OcrRepositoryImpl(
     /**
      * Inline function for pixel normalization.
      * Converts RGB pixels to normalized float values.
-     * Manually unrolled for better performance.
      */
     @Suppress("NOTHING_TO_INLINE")
     private inline fun normalizePixels(pixels: IntArray, output: FloatArray) {
@@ -190,11 +197,12 @@ class OcrRepositoryImpl(
      * Uses dedicated output buffers created at initialization.
      */
     private fun runEncoder(): FloatArray {
-        val outputBuffers = encoderOutputBuffers
-        encoderModel.run(encoderInputBuffers, outputBuffers)
+        val inputBuffers = listOf(encoderImageInput)
+        val outputBuffers = listOf(encoderHiddenStatesOutput)
+        encoderModel.run(inputBuffers, outputBuffers)
 
         // Read and create persistent copy for decoder
-        return encoderOutputBuffers[0].readFloat()
+        return encoderHiddenStatesOutput.readFloat()
     }
 
     private fun runDecoder(encoderHiddenStates: FloatArray): Int {
@@ -203,18 +211,16 @@ class OcrRepositoryImpl(
         var tokenCount = 1
 
         // Reset input IDs array to PAD tokens
-        inputIdsArray.fill(PAD_TOKEN_ID.toLong())
-        inputIdsArray[0] = START_TOKEN_ID.toLong()
+        inputIdsArray.fill(PAD_TOKEN_ID)
+        inputIdsArray[0] = START_TOKEN_ID
 
         var totalInferenceTime = 0L
 
-        val decoderInputs = decoderInputBuffers
         // Write encoder states once - they don't change during decoding
-        decoderInputs[1].writeFloat(encoderHiddenStates)
+        decoderHiddenStatesInput.writeFloat(encoderHiddenStates)
 
-        val decoderOutputs = decoderOutputBuffers
-        val decoderInput = decoderInputs[0]
-        val decoderOutput = decoderOutputs[0]
+        val decoderInputs = listOf(decoderHiddenStatesInput, decoderInputIdsInput)
+        val decoderOutputs = listOf(decoderLogitsOutput)
 
         @Suppress("UNUSED_PARAMETER")
         for (step in 0 until MAX_SEQUENCE_LENGTH - 1) {
@@ -225,7 +231,7 @@ class OcrRepositoryImpl(
             }
 
             // Write to pre-allocated buffers (reused across iterations)
-            decoderInput.writeLong(inputIdsArray)
+            decoderInputIdsInput.writeInt(inputIdsArray)
 
             // Run inference
             totalInferenceTime += measureNanoTime {
@@ -233,7 +239,7 @@ class OcrRepositoryImpl(
             }
 
             // Extract next token
-            val logits = decoderOutput.readFloat()
+            val logits = decoderLogitsOutput.readFloat()
             val nextToken = findMaxLogitToken(logits, currentSeqLen)
 
             // Validate token
@@ -243,7 +249,7 @@ class OcrRepositoryImpl(
 
             val nextIndex = tokenCount
             tokenIds[nextIndex] = nextToken
-            inputIdsArray[nextIndex] = nextToken.toLong()
+            inputIdsArray[nextIndex] = nextToken
             tokenCount = nextIndex + 1
 
             // Check stopping conditions
@@ -312,10 +318,11 @@ class OcrRepositoryImpl(
     private fun closeInternal() {
         try {
             // Close reusable buffers
-            encoderInputBuffers.forEach { it.close() }
-            encoderOutputBuffers.forEach { it.close() }
-            decoderInputBuffers.forEach { it.close() }
-            decoderOutputBuffers.forEach { it.close() }
+            encoderImageInput.close()
+            encoderHiddenStatesOutput.close()
+            decoderHiddenStatesInput.close()
+            decoderInputIdsInput.close()
+            decoderLogitsOutput.close()
 
             // Close models
             encoderModel.close()
