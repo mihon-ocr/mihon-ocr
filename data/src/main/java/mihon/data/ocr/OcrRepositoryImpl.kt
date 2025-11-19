@@ -9,6 +9,8 @@ import com.google.ai.edge.litert.TensorBuffer
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.system.measureNanoTime
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
@@ -19,20 +21,25 @@ class OcrRepositoryImpl(
 ) : OcrRepository {
     private val encoderModelPath: String = "ocr/encoder.tflite"
     private val decoderModelPath: String = "ocr/decoder.tflite"
+    private val embeddingsPath: String = "ocr/embeddings.bin"
     private val encoderModel: CompiledModel
     private val decoderModel: CompiledModel
     private val textPostprocessor: TextPostprocessor
-    private val encoderImageInput: TensorBuffer
-    private val encoderHiddenStatesOutput: TensorBuffer
-    private val decoderHiddenStatesInput: TensorBuffer
-    private val decoderInputIdsInput: TensorBuffer
-    private val decoderLogitsOutput: TensorBuffer
+    private var encoderImageInput: TensorBuffer
+    private var encoderHiddenStatesOutput: TensorBuffer
+    private var decoderHiddenStatesInput: TensorBuffer
+    private var decoderEmbeddingsInput: TensorBuffer
+    private var decoderAttentionMaskInput: TensorBuffer
+    private var decoderLogitsOutput: TensorBuffer
     private val inputIdsArray: IntArray = IntArray(MAX_SEQUENCE_LENGTH)
     private val inferenceMutex = Mutex() // Guards shared inference buffers
     private val pixelsBuffer = IntArray(IMAGE_SIZE * IMAGE_SIZE)
     private val normalizedBuffer = FloatArray(IMAGE_SIZE * IMAGE_SIZE * 3)
     private val tokenBuffer = IntArray(MAX_SEQUENCE_LENGTH)
     private val textBuilder = StringBuilder(MAX_SEQUENCE_LENGTH * 2)
+    private val embeddings: FloatArray
+    private val embeddingsInputBuffer = FloatArray(MAX_SEQUENCE_LENGTH * HIDDEN_SIZE)
+    private val attentionMaskBuffer = FloatArray(MAX_SEQUENCE_LENGTH)
 
     companion object {
         private const val IMAGE_SIZE = 224
@@ -46,20 +53,16 @@ class OcrRepositoryImpl(
         private const val SPECIAL_TOKEN_THRESHOLD = 5
         private const val MAX_SEQUENCE_LENGTH = 300
         private const val VOCAB_SIZE = 6144
-        private const val MIN_CPU_THREADS = 2
-        private const val MAX_CPU_THREADS = 4
+        private const val HIDDEN_SIZE = 768
     }
 
     init {
-        val cpuThreads = resolveCpuThreads()
-        val sharedCpuOptions = cpuThreads?.let { CompiledModel.CpuOptions(numThreads = it) }
-
-        val encoderOptions = CompiledModel.Options(Accelerator.CPU).apply {
-            sharedCpuOptions?.let { cpuOptions = it }
+        val encoderOptions = CompiledModel.Options(Accelerator.GPU).apply {
+            CompiledModel.GpuOptions(precision = CompiledModel.GpuOptions.Precision.FP16)
         }
-        // decoder does not support GPU operations
-        val decoderOptions = CompiledModel.Options(Accelerator.CPU).apply {
-            sharedCpuOptions?.let { cpuOptions = it }
+
+        val decoderOptions = CompiledModel.Options(Accelerator.GPU).apply {
+            CompiledModel.GpuOptions(precision = CompiledModel.GpuOptions.Precision.FP16)
         }
 
         encoderModel = CompiledModel.create(
@@ -74,23 +77,29 @@ class OcrRepositoryImpl(
             decoderOptions,
         )
 
+        // Load embeddings
+        val embeddingsBytes = context.assets.open(embeddingsPath).use { it.readBytes() }
+        val embeddingsBuffer = ByteBuffer.wrap(embeddingsBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+        embeddings = FloatArray(embeddingsBuffer.remaining())
+        embeddingsBuffer.get(embeddings)
+
         val encoderInputBuffers = encoderModel.createInputBuffers()
         val encoderOutputBuffers = encoderModel.createOutputBuffers()
         val decoderInputBuffers = decoderModel.createInputBuffers()
         val decoderOutputBuffers = decoderModel.createOutputBuffers()
 
-        // IO may be swapped depending on model version
-        // Checking with Netron is recommended
         encoderImageInput = encoderInputBuffers[0]
         encoderHiddenStatesOutput = encoderOutputBuffers[0]
+
         decoderHiddenStatesInput = decoderInputBuffers[0]
-        decoderInputIdsInput = decoderInputBuffers[1]
+        decoderAttentionMaskInput = decoderInputBuffers[1]
+        decoderEmbeddingsInput = decoderInputBuffers[2]
+
         decoderLogitsOutput = decoderOutputBuffers[0]
 
         textPostprocessor = TextPostprocessor()
 
-        val threadInfo = cpuThreads?.let { " (threads=$it)" }.orEmpty()
-        logcat(LogPriority.INFO) { "OCR models initialized$threadInfo" }
+        logcat(LogPriority.INFO) { "OCR models initialized" }
     }
 
     override suspend fun recognizeText(image: Bitmap): String {
@@ -214,53 +223,65 @@ class OcrRepositoryImpl(
         inputIdsArray.fill(PAD_TOKEN_ID)
         inputIdsArray[0] = START_TOKEN_ID
 
+        // Clear buffers to ensure no artifacts from previous images
+        embeddingsInputBuffer.fill(0f)
+        attentionMaskBuffer.fill(0f)
+
+        // Pre-calculate the Start Token embedding/mask
+        updateEmbedding(START_TOKEN_ID, 0)
+        attentionMaskBuffer[0] = 1.0f
+
         var totalInferenceTime = 0L
-
-        // Write encoder states once - they don't change during decoding
-        decoderHiddenStatesInput.writeFloat(encoderHiddenStates)
-
-        val decoderInputs = listOf(decoderHiddenStatesInput, decoderInputIdsInput)
-        val decoderOutputs = listOf(decoderLogitsOutput)
 
         @Suppress("UNUSED_PARAMETER")
         for (step in 0 until MAX_SEQUENCE_LENGTH - 1) {
-            val currentSeqLen = tokenCount
+            // Write encoder states and input IDs to reused buffers
+            decoderHiddenStatesInput.writeFloat(encoderHiddenStates)
+            decoderEmbeddingsInput.writeFloat(embeddingsInputBuffer)
+            decoderAttentionMaskInput.writeFloat(attentionMaskBuffer)
 
-            if (currentSeqLen >= MAX_SEQUENCE_LENGTH) {
-                break
-            }
-
-            // Write to pre-allocated buffers (reused across iterations)
-            decoderInputIdsInput.writeInt(inputIdsArray)
+            val decoderInputs = listOf(decoderHiddenStatesInput, decoderAttentionMaskInput, decoderEmbeddingsInput)
+            val decoderOutputs = listOf(decoderLogitsOutput)
 
             // Run inference
             totalInferenceTime += measureNanoTime {
                 decoderModel.run(decoderInputs, decoderOutputs)
             }
 
-            // Extract next token
             val logits = decoderLogitsOutput.readFloat()
-            val nextToken = findMaxLogitToken(logits, currentSeqLen)
+            val nextToken = findMaxLogitToken(logits, tokenCount)
 
             // Validate token
-            if (nextToken < 0) {
+            if (nextToken < 0 || nextToken == END_TOKEN_ID) {
                 break
             }
 
             val nextIndex = tokenCount
             tokenIds[nextIndex] = nextToken
             inputIdsArray[nextIndex] = nextToken
-            tokenCount = nextIndex + 1
 
-            // Check stopping conditions
-            if (nextToken == END_TOKEN_ID) {
+            updateEmbedding(nextToken, nextIndex)
+            attentionMaskBuffer[nextIndex] = 1.0f
+
+            tokenCount++
+            if (tokenCount >= MAX_SEQUENCE_LENGTH) {
                 break
             }
+
         }
 
         logcat(LogPriority.INFO) { "OCR Perf Test: decoderModel.run sub-time took ${totalInferenceTime / 1_000_000} ms" }
 
         return tokenCount
+    }
+
+    /**
+    * Only copies the specific slice needed for the current index.
+    */
+    private fun updateEmbedding(tokenId: Int, index: Int) {
+        val embedOffset = tokenId * HIDDEN_SIZE
+        val outputOffset = index * HIDDEN_SIZE
+        System.arraycopy(embeddings, embedOffset, embeddingsInputBuffer, outputOffset, HIDDEN_SIZE)
     }
 
     /**
@@ -321,7 +342,8 @@ class OcrRepositoryImpl(
             encoderImageInput.close()
             encoderHiddenStatesOutput.close()
             decoderHiddenStatesInput.close()
-            decoderInputIdsInput.close()
+            decoderEmbeddingsInput.close()
+            decoderAttentionMaskInput.close()
             decoderLogitsOutput.close()
 
             // Close models
@@ -332,11 +354,5 @@ class OcrRepositoryImpl(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Error closing OCR models: ${e.message}" }
         }
-    }
-
-    private fun resolveCpuThreads(): Int? {
-        val available = Runtime.getRuntime().availableProcessors()
-        if (available <= 1) return null
-        return available.coerceIn(MIN_CPU_THREADS, MAX_CPU_THREADS)
     }
 }
