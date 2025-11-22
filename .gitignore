@@ -18,3 +18,16 @@ local.properties
 # OCR model files
 decoder.tflite
 encoder.tflite
+embeddings.bin  
+
+# Native/C++ build artifacts
+**/.cxx/
+**/obj/
+**/cmake-build-*/
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.lib
+*.pch

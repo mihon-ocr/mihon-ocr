@@ -54,6 +54,10 @@ class OcrRepositoryImpl(
         private const val MAX_SEQUENCE_LENGTH = 300
         private const val VOCAB_SIZE = 6144
         private const val HIDDEN_SIZE = 768
+        
+        init {
+            System.loadLibrary("mihon_ocr")
+        }
     }
 
     init {
@@ -98,6 +102,9 @@ class OcrRepositoryImpl(
         decoderLogitsOutput = decoderOutputBuffers[0]
 
         textPostprocessor = TextPostprocessor()
+        
+        // Initialize native helpers
+        nativeInit()
 
         logcat(LogPriority.INFO) { "OCR models initialized" }
     }
@@ -137,7 +144,7 @@ class OcrRepositoryImpl(
 
         val postprocessedText: String
         val postprocessTime = measureNanoTime {
-            postprocessedText = textPostprocessor.postprocess(rawText)
+            postprocessedText = nativePostprocessText(rawText)
         }
         logcat(LogPriority.INFO) { "OCR Perf Test: postprocess took ${postprocessTime / 1_000_000} ms" }
 
@@ -148,7 +155,7 @@ class OcrRepositoryImpl(
     }
 
     /**
-     * Preprocesses the input bitmap for OCR recognition.
+     * Preprocesses the input bitmap for OCR recognition using native code.
      */
     private fun preprocessImage(bitmap: Bitmap, inputBuffer: TensorBuffer) {
         val needsResize = bitmap.width != IMAGE_SIZE || bitmap.height != IMAGE_SIZE
@@ -168,36 +175,14 @@ class OcrRepositoryImpl(
         }
 
         try {
-            // Direct pixel processing with pre-allocated arrays
-            workingBitmap.getPixels(pixelsBuffer, 0, IMAGE_SIZE, 0, 0, IMAGE_SIZE, IMAGE_SIZE)
-
-            // Normalize directly to output buffer
-            normalizePixels(pixelsBuffer, normalizedBuffer)
-
+            // Use native preprocessing for better performance
+            nativePreprocessImage(workingBitmap, normalizedBuffer)
             inputBuffer.writeFloat(normalizedBuffer)
         } finally {
             // Clean up only if we created a new bitmap
             if (workingBitmap !== bitmap) {
                 workingBitmap.recycle()
             }
-        }
-    }
-
-    /**
-     * Inline function for pixel normalization.
-     * Converts RGB pixels to normalized float values.
-     */
-    @Suppress("NOTHING_TO_INLINE")
-    private inline fun normalizePixels(pixels: IntArray, output: FloatArray) {
-        var outIndex = 0
-        for (pixel in pixels) {
-            val r = ((pixel shr 16) and 0xFF)
-            val g = ((pixel shr 8) and 0xFF)
-            val b = (pixel and 0xFF)
-
-            output[outIndex++] = r * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex++] = g * NORMALIZATION_FACTOR - NORMALIZED_MEAN
-            output[outIndex++] = b * NORMALIZATION_FACTOR - NORMALIZED_MEAN
         }
     }
 
@@ -307,25 +292,10 @@ class OcrRepositoryImpl(
     }
 
     /**
-     * Convert token IDs to text using the vocabulary.
+     * Convert token IDs to text using the vocabulary (native implementation).
      */
     private fun decodeTokens(tokenIds: IntArray, tokenCount: Int): String {
-        // Reuse builder to minimize per-call allocations
-        val text = textBuilder
-        text.setLength(0)
-
-        for (index in 0 until tokenCount) {
-            val tokenId = tokenIds[index]
-
-            if (tokenId < SPECIAL_TOKEN_THRESHOLD) continue
-
-            // Bounds check once per token
-            if (tokenId < VOCAB_SIZE) {
-                text.append(vocab[tokenId])
-            }
-        }
-
-        return text.toString()
+        return nativeDecodeTokens(tokenIds, tokenCount)
     }
 
     override fun close() {
@@ -349,10 +319,20 @@ class OcrRepositoryImpl(
             // Close models
             encoderModel.close()
             decoderModel.close()
+            
+            // Close native resources
+            nativeClose()
 
             logcat(LogPriority.INFO) { "OCR models closed successfully" }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Error closing OCR models: ${e.message}" }
         }
     }
+    
+    // Native methods for optimized operations
+    private external fun nativeInit()
+    private external fun nativePreprocessImage(bitmap: Bitmap, output: FloatArray)
+    private external fun nativeDecodeTokens(tokenIds: IntArray, tokenCount: Int): String
+    private external fun nativePostprocessText(text: String): String
+    private external fun nativeClose()
 }
