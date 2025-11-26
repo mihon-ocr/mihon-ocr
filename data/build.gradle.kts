@@ -10,21 +10,23 @@ android {
 
     defaultConfig {
         consumerProguardFiles("consumer-rules.pro")
-        
+
         externalNativeBuild {
             cmake {
-                cppFlags += "-std=c++17"
+                cppFlags += "-std=c++20"
                 arguments += listOf(
-                    "-DANDROID_STL=c++_shared"
+                    "-DANDROID_STL=c++_shared",
                 )
             }
         }
-        
+
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            // Only arm64-v8a is supported by the prebuilt LiteRT C++ distribution
+            // TODO: Add other types
+            abiFilters += listOf("arm64-v8a")
         }
     }
-    
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -53,9 +55,6 @@ dependencies {
     implementation(projects.sourceApi)
     implementation(projects.domain)
     implementation(projects.core.common)
-
-    // OCR
-    implementation(libs.litert)
 
     api(libs.bundles.sqldelight)
 
