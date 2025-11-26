@@ -29,6 +29,10 @@ static std::vector<std::string> g_vocab;
 static std::unique_ptr<mihon::OcrInference> g_ocrInference;
 static std::atomic<int> g_activeOcrClients{0};
 
+// Pre-allocated buffers for inference (avoid allocation per call)
+static std::vector<float> g_imageBuffer;
+static std::vector<int> g_tokenBuffer;
+
 // Helper function to read asset into memory
 static std::vector<uint8_t> ReadAsset(AAssetManager* assetManager, const char* filename) {
     AAsset* asset = AAssetManager_open(assetManager, filename, AASSET_MODE_BUFFER);
@@ -52,7 +56,6 @@ static std::vector<uint8_t> ReadAsset(AAssetManager* assetManager, const char* f
     return buffer;
 }
 
-// Helper for bitmap preprocessing (same as before)
 static void PreprocessBitmap(JNIEnv* env, jobject bitmap, float* output) {
     AndroidBitmapInfo info;
     void* pixels;
@@ -73,7 +76,6 @@ static void PreprocessBitmap(JNIEnv* env, jobject bitmap, float* output) {
         uint32_t* srcPixels = static_cast<uint32_t*>(pixels);
         
         if (width == IMAGE_SIZE && height == IMAGE_SIZE) {
-            // Direct normalization
             int outIndex = 0;
             for (int i = 0; i < IMAGE_SIZE * IMAGE_SIZE; i++) {
                 uint32_t pixel = srcPixels[i];
@@ -86,7 +88,6 @@ static void PreprocessBitmap(JNIEnv* env, jobject bitmap, float* output) {
                 output[outIndex++] = b * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
             }
         } else {
-            // Resize with nearest neighbor then normalize
             float scaleX = static_cast<float>(width) / IMAGE_SIZE;
             float scaleY = static_cast<float>(height) / IMAGE_SIZE;
             
@@ -140,12 +141,10 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
             return JNI_TRUE;
         }
 
-        // Initialize text postprocessor and vocab (legacy methods still needed)
         g_textPostprocessor = std::make_unique<mihon::TextPostprocessor>();
         g_vocab = mihon::getVocabulary();
         LOGI("Initialized helpers (vocab size: %zu)", g_vocab.size());
         
-        // Get AAssetManager
         AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
         if (!mgr) {
             LOGE("Failed to get AAssetManager");
@@ -189,6 +188,10 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
         }
         g_activeOcrClients.store(1);
         
+        // Pre-allocate inference buffers
+        g_imageBuffer.resize(IMAGE_SIZE * IMAGE_SIZE * 3);
+        g_tokenBuffer.resize(MAX_SEQUENCE_LENGTH);
+        
            // Log which accelerator was selected (GPU/CPU) and per-model info
            LOGI("app.mihonocr.dev: Native OCR engine initialized successfully (ACCELERATOR_ENCODER=%s)",
                g_ocrInference->IsEncoderUsingGpu() ? "GPU" : "CPU");
@@ -217,18 +220,18 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
     }
     
  try {
-        // Allocate buffers
-        std::vector<float> image_data(IMAGE_SIZE * IMAGE_SIZE * 3);
-        std::vector<int> tokens(MAX_SEQUENCE_LENGTH);
+        // Use pre-allocated buffers (already sized during init)
+        float* image_data = g_imageBuffer.data();
+        int* tokens = g_tokenBuffer.data();
         
-        // Preprocess bitmap
-        PreprocessBitmap(env, bitmap, image_data.data());
+        // Preprocess bitmap directly into pre-allocated buffer
+        PreprocessBitmap(env, bitmap, image_data);
         
         // Run inference
         auto t0 = std::chrono::high_resolution_clock::now();
         const int token_count = g_ocrInference->InferTokens(
-            image_data.data(),
-            tokens.data(),
+            image_data,
+            tokens,
             MAX_SEQUENCE_LENGTH
         );
         auto t1 = std::chrono::high_resolution_clock::now();
@@ -240,18 +243,20 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
             return env->NewStringUTF("");
         }
         
-        // Decode tokens to text
+        // Decode tokens to text (pre-reserve estimated size: ~3 bytes per token for Japanese)
         std::string result;
-        result.reserve(token_count * 3);
+        result.reserve(static_cast<size_t>(token_count) * 3);
         
-        for (int i = 0; i < token_count; i++) {
-            int tokenId = tokens[i];
+        const int vocab_size = static_cast<int>(g_vocab.size());
+        for (int i = 0; i < token_count; ++i) {
+            const int tokenId = tokens[i];
             
+            // Skip special tokens (PAD, UNK, CLS, SEP, MASK)
             if (tokenId < SPECIAL_TOKEN_THRESHOLD) {
                 continue;
             }
             
-            if (tokenId < static_cast<int>(g_vocab.size())) {
+            if (tokenId < vocab_size) {
                 result += g_vocab[tokenId];
             }
         }
@@ -286,6 +291,13 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrClose(JNIEnv* env, jobject /* thi
     }
     g_textPostprocessor.reset();
     g_vocab.clear();
+    
+    // Clear pre-allocated buffers
+    g_imageBuffer.clear();
+    g_imageBuffer.shrink_to_fit();
+    g_tokenBuffer.clear();
+    g_tokenBuffer.shrink_to_fit();
+    
     LOGI("Native OCR engine closed");
 }
 

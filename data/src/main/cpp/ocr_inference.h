@@ -60,22 +60,19 @@ private:
     std::vector<float> attention_mask_;
     std::vector<int> input_ids_;
 
-    // Temporary file paths for models
-    std::string encoder_model_path_;
-    std::string decoder_model_path_;
-
     bool initialized_ = false;
 
     // Helper methods
-    void UpdateEmbedding(int token_id, int index);
-    int FindMaxLogitToken(const float* logits, int seq_len);
-    bool WriteModelToTempFile(const uint8_t* data, size_t size, const char* cache_dir, const char* filename, std::string& out_path);
-    bool TryCompileWithGpu();
+    void UpdateEmbedding(int token_id, int index) noexcept;
+    int FindMaxLogitToken(int seq_len) const noexcept;
+    bool TryCompileWithGpu(const uint8_t* encoder_data, size_t encoder_size, const uint8_t* decoder_data, size_t decoder_size);
     bool PerformWarmup();
     bool CreateBuffers();
+    
+    // Cached sizes from actual model outputs (determined during buffer creation)
+    size_t encoder_output_size_ = 0;
+    size_t decoder_output_size_ = 0;
 };
-
-
 
 } // namespace mihon
 

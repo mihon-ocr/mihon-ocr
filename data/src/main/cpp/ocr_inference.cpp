@@ -15,6 +15,7 @@
 #include "litert/cc/litert_tensor_buffer.h"
 #include "litert/cc/litert_common.h"
 #include "litert/cc/litert_options.h"
+#include "litert/cc/litert_buffer_ref.h"
 
 // C API for environment
 #include "litert/c/litert_common.h"
@@ -27,6 +28,14 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 
 namespace mihon {
+
+// Helper to log duration with a consistent message format
+static void LogDurationMs(const char* label, const std::chrono::steady_clock::time_point& start) {
+    const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start
+    ).count();
+    LOGI("%s took %lld ms", label, ms);
+}
 
 // Internal structure to hold LiteRT objects using optional for lazy initialization
 struct OcrInference::LiteRtObjects {
@@ -55,33 +64,6 @@ OcrInference::~OcrInference() {
     Close();
 }
 
-bool OcrInference::WriteModelToTempFile(
-    const uint8_t* data, 
-    size_t size, 
-    const char* cache_dir,
-    const char* filename, 
-    std::string& out_path
-) {
-    out_path = std::string(cache_dir) + "/" + filename;
-    
-    std::ofstream file(out_path, std::ios::binary | std::ios::trunc);
-    if (!file.is_open()) {
-        LOGE("Failed to open temp file for writing: %s", out_path.c_str());
-        return false;
-    }
-    
-    file.write(reinterpret_cast<const char*>(data), size);
-    file.close();
-    
-    if (!file.good()) {
-        LOGE("Failed to write model data to temp file: %s", out_path.c_str());
-        return false;
-    }
-    
-    LOGI("Wrote model to temp file: %s (%zu bytes)", out_path.c_str(), size);
-    return true;
-}
-
 bool OcrInference::Initialize(
     const uint8_t* encoder_data,
     size_t encoder_size,
@@ -96,17 +78,10 @@ bool OcrInference::Initialize(
         LOGE("OcrInference already initialized");
         return false;
     }
-
     LOGI("Initializing OcrInference with LiteRT Next C++ API...");
+    const auto overall_init_start = std::chrono::steady_clock::now();
 
     try {
-        // Write models to temporary files
-        if (!WriteModelToTempFile(encoder_data, encoder_size, cache_dir, "encoder.tflite", encoder_model_path_)) {
-            return false;
-        }
-        if (!WriteModelToTempFile(decoder_data, decoder_size, cache_dir, "decoder.tflite", decoder_model_path_)) {
-            return false;
-        }
 
         // Load embeddings into memory
         const size_t embedding_count = embeddings_size / sizeof(float);
@@ -120,6 +95,7 @@ bool OcrInference::Initialize(
         // Create environment with dispatch library directory option
         // This tells LiteRT where to find accelerator libraries like GPU
         LOGI("Creating LiteRT environment with dispatch library dir: %s", native_lib_dir);
+        const auto env_start = std::chrono::steady_clock::now();
         
         std::vector<litert::Environment::Option> env_options;
         // Use the native library directory from the app's applicationInfo
@@ -137,17 +113,19 @@ bool OcrInference::Initialize(
         }
         litert_->env.emplace(std::move(env_result.Value()));
         LOGI("LiteRT environment created successfully");
+        LogDurationMs("LiteRT Environment creation", env_start);
 
         // Create GPU environment explicitly to initialize OpenCL
-        // This is required for GPU acceleration to work properly
         LOGI("Creating GPU environment with OpenCL...");
         
         // First, try to load the system OpenCL library explicitly
         // This helps the GPU delegate find OpenCL later
+        const auto opencl_start = std::chrono::steady_clock::now();
         void* opencl_lib = dlopen("libOpenCL.so", RTLD_NOW | RTLD_GLOBAL);
         if (opencl_lib != nullptr) {
             LOGI("Loaded system OpenCL library successfully");
         } else {
+                LogDurationMs("OpenCL dlopen", opencl_start);
             // Try vendor path
             opencl_lib = dlopen("/vendor/lib64/libOpenCL.so", RTLD_NOW | RTLD_GLOBAL);
             if (opencl_lib != nullptr) {
@@ -156,18 +134,6 @@ bool OcrInference::Initialize(
                 LOGW("Failed to load OpenCL library: %s", dlerror());
             }
         }
-        
-        // LiteRtStatus gpu_env_status = LiteRtGpuEnvironmentCreate(
-        //     litert_->env->Get(), 
-        //     0,      // num_options - no extra options needed
-        //     nullptr // options - let LiteRT create default OpenCL resources
-        // );
-        // if (gpu_env_status == kLiteRtStatusOk) {
-        //     LOGI("GPU environment created successfully - OpenCL initialized");
-        // } else {
-        //     LOGW("Failed to create GPU environment: status=%d (GPU acceleration may not work)", 
-        //          static_cast<int>(gpu_env_status));
-        // }
 
         // LiteRT will automatically try to register GPU accelerator from the dispatch library dir.
         // We rely on auto-registration.
@@ -175,7 +141,7 @@ bool OcrInference::Initialize(
 
         // GPU acceleration is mandatory
         LOGI("=== STARTING GPU COMPILATION ATTEMPT ===");
-        if (!TryCompileWithGpu()) {
+        if (!TryCompileWithGpu(encoder_data, encoder_size, decoder_data, decoder_size)) {
             LOGE("GPU compilation failed; LiteRT Next GPU acceleration is required for OCR");
             return false;
         }
@@ -187,7 +153,7 @@ bool OcrInference::Initialize(
         LOGI("GPU compilation succeeded - encoder_using_gpu=%d, decoder_using_gpu=%d",
              litert_->encoder_using_gpu, litert_->decoder_using_gpu);
 
-        LOGI("=== CREATING GPU BUFFERS ===");
+        LOGI("=== STARTING CreateBuffers ===");
         if (!CreateBuffers()) {
             LOGE("Failed to create GPU buffers");
             return false;
@@ -205,14 +171,9 @@ bool OcrInference::Initialize(
         embeddings_input_.resize(MAX_SEQUENCE_LENGTH * HIDDEN_SIZE, 0.0f);
         attention_mask_.resize(MAX_SEQUENCE_LENGTH, 0.0f);
         input_ids_.resize(MAX_SEQUENCE_LENGTH, PAD_TOKEN_ID);
-        
-        // Pre-allocate output buffers (these sizes are based on model outputs)
-        // Encoder output: [1, seq_len, hidden_size] - typically 196 patches * 768 hidden
-        litert_->encoder_hidden_states.resize(196 * HIDDEN_SIZE);
-        // Decoder output: [1, max_seq_len, vocab_size]
-        litert_->decoder_logits.resize(MAX_SEQUENCE_LENGTH * VOCAB_SIZE);
 
         initialized_ = true;
+        LogDurationMs("Overall OcrInference Initialize", overall_init_start);
            LOGI("OcrInference initialized successfully (overall: %s)", 
                litert_->using_gpu ? "GPU" : "CPU");
            // Log per-model accelerator usage for clarity and automated tests
@@ -231,6 +192,7 @@ bool OcrInference::Initialize(
 }
 
 bool OcrInference::CreateBuffers() {
+    const auto start = std::chrono::steady_clock::now();
     // Create input/output buffers for encoder
     LOGI("Creating buffers for compiled models...");
     
@@ -279,6 +241,29 @@ bool OcrInference::CreateBuffers() {
     LOGI("[BUFFERS] Decoder output buffers created (%zu buffers)", 
          litert_->decoder_output_buffers.size());
 
+    // Determine actual buffer sizes from the model for pre-allocation
+    auto encoder_out_size_result = litert_->encoder_output_buffers[0].Size();
+    if (encoder_out_size_result.HasValue()) {
+        encoder_output_size_ = encoder_out_size_result.Value() / sizeof(float);
+        LOGI("[BUFFERS] Encoder output size: %zu floats", encoder_output_size_);
+    } else {
+        LOGE("[BUFFERS] Failed to get encoder output buffer size");
+        return false;
+    }
+    
+    auto decoder_out_size_result = litert_->decoder_output_buffers[0].Size();
+    if (decoder_out_size_result.HasValue()) {
+        decoder_output_size_ = decoder_out_size_result.Value() / sizeof(float);
+        LOGI("[BUFFERS] Decoder output size: %zu floats", decoder_output_size_);
+    } else {
+        LOGE("[BUFFERS] Failed to get decoder output buffer size");
+        return false;
+    }
+    
+    // Pre-allocate output buffers with exact sizes from model
+    litert_->encoder_hidden_states.resize(encoder_output_size_);
+    litert_->decoder_logits.resize(decoder_output_size_);
+
     // Log buffer info summary
     LOGI("[BUFFERS] Summary: Encoder has %zu input + %zu output buffers", 
             litert_->encoder_input_buffers.size(), 
@@ -287,12 +272,14 @@ bool OcrInference::CreateBuffers() {
             litert_->decoder_input_buffers.size(), 
             litert_->decoder_output_buffers.size());
     LOGI("[BUFFERS] All buffers created successfully!");
+    LogDurationMs("CreateBuffers overhead", start);
             
     return true;
 }
 
 bool OcrInference::PerformWarmup() {
     LOGI("Performing warmup inference...");
+    const auto warmup_start = std::chrono::steady_clock::now();
     
     // Create dummy input for encoder
     std::vector<float> dummy_image(IMAGE_SIZE * IMAGE_SIZE * 3, 0.0f);
@@ -372,12 +359,13 @@ bool OcrInference::PerformWarmup() {
     }
     
     LOGI("Warmup successful!");
+    LogDurationMs("PerformWarmup total", warmup_start);
     return true;
 }
 
-
-bool OcrInference::TryCompileWithGpu() {
+bool OcrInference::TryCompileWithGpu(const uint8_t* encoder_data, size_t encoder_size, const uint8_t* decoder_data, size_t decoder_size) {
     LOGI("Attempting gpu compilation for encoder");
+    const auto try_compile_start = std::chrono::steady_clock::now();
     
     // Try GPU-only first to get clear error messages
     LOGI("[GPU-ENCODER] Step 1: Creating compilation options...");
@@ -404,14 +392,6 @@ bool OcrInference::TryCompileWithGpu() {
     if (gpu_opts_result.HasValue()) {
         auto& gpu_opts = gpu_opts_result.Value();
         LOGI("[GPU-ENCODER] Configuring GPU precision...");
-        
-        // Let LiteRT choose the best backend (usually OpenCL on Android)
-        // auto backend_result = gpu_opts.SetBackend(litert::GpuOptions::Backend::kOpenCl);
-        // if (!backend_result.HasValue()) {
-        //     LOGW("Failed to set GPU backend to OpenCL: %s", backend_result.Error().Message().c_str());
-        // } else {
-        //     LOGI("GPU backend set to OpenCL");
-        // }
 
         // Use FP16 precision for better performance on mobile GPUs
         auto precision_result = gpu_opts.SetPrecision(litert::GpuOptions::Precision::kFp16);
@@ -420,28 +400,16 @@ bool OcrInference::TryCompileWithGpu() {
         } else {
             LOGI("[GPU-ENCODER] GPU precision set to FP16");
         }
-        
-        // Enable serialization for faster subsequent loads
-        // Use cache dir for storing compiled GPU programs
-        // Disable serialization for now to rule out cache issues
-        // std::string cache_path = encoder_model_path_.substr(0, encoder_model_path_.rfind('/'));
-        // auto ser_result = gpu_opts.SetSerializationDir(cache_path.c_str());
-        // if (ser_result == kLiteRtStatusOk) {
-        //     LOGI("GPU serialization dir set to: %s", cache_path.c_str());
-        //     gpu_opts.SetModelCacheKey("encoder_gpu_v1");
-        //     gpu_opts.SetSerializeProgramCache(true);
-        // }
-
-
 
     } else {
         LOGW("[GPU-ENCODER] Failed to get GPU options: %s", gpu_opts_result.Error().Message().c_str());
     }
     
     LOGI("[GPU-ENCODER] Step 4: Calling CompiledModel::Create (this may take a few seconds)...");
+    const auto encoder_compile_start = std::chrono::steady_clock::now();
     auto compiled_encoder_result = litert::CompiledModel::Create(
         *litert_->env,
-        encoder_model_path_,
+        litert::BufferRef<uint8_t>(encoder_data, encoder_size),
         options
     );
     if (!compiled_encoder_result.HasValue()) {
@@ -450,9 +418,8 @@ bool OcrInference::TryCompileWithGpu() {
              static_cast<int>(error.Status()), error.Message().c_str());
         return false;
     }
+    LogDurationMs("Encoder GPU compile", encoder_compile_start);
     LOGI("[GPU-ENCODER] Encoder compiled successfully with GPU!");
-
-
     
     // Check if the encoder is fully accelerated on GPU
     LOGI("[GPU-ENCODER] Step 5: Checking if encoder is fully GPU-accelerated...");
@@ -472,6 +439,7 @@ bool OcrInference::TryCompileWithGpu() {
     }
     
     LOGI("Attempting GPU compilation for decoder...");
+    const auto decoder_compile_start = std::chrono::steady_clock::now();
     
     LOGI("[GPU-DECODER] Step 1: Creating compilation options...");
     auto decoder_options_result = litert::Options::Create();
@@ -498,21 +466,12 @@ bool OcrInference::TryCompileWithGpu() {
         } else {
             LOGI("[GPU-DECODER] GPU precision set to FP16");
         }
-        
-        // std::string cache_path = decoder_model_path_.substr(0, decoder_model_path_.rfind('/'));
-        // auto ser_result = decoder_gpu_opts.SetSerializationDir(cache_path.c_str());
-        // if (ser_result == kLiteRtStatusOk) {
-        //     decoder_gpu_opts.SetModelCacheKey("decoder_gpu_v1");
-        //     decoder_gpu_opts.SetSerializeProgramCache(true);
-        // }
-
-
     }
     
     LOGI("[GPU-DECODER] Step 4: Calling CompiledModel::Create (this may take a few seconds)...");
     auto compiled_decoder_result = litert::CompiledModel::Create(
         *litert_->env,
-        decoder_model_path_,
+        litert::BufferRef<uint8_t>(decoder_data, decoder_size),
         decoder_options
     );
     if (!compiled_decoder_result.HasValue()) {
@@ -521,6 +480,7 @@ bool OcrInference::TryCompileWithGpu() {
              static_cast<int>(error.Status()), error.Message().c_str());
         return false;
     }
+    LogDurationMs("Decoder GPU compile", decoder_compile_start);
     LOGI("[GPU-DECODER] Decoder compiled successfully with GPU!");
     
     // Check if the decoder is fully accelerated
@@ -548,6 +508,7 @@ bool OcrInference::TryCompileWithGpu() {
     litert_->using_gpu = true;
     
     LOGI("Both encoder and decoder are fully GPU-accelerated!");
+    LogDurationMs("TryCompileWithGpu total", try_compile_start);
     return true;
 }
 
@@ -566,7 +527,7 @@ bool OcrInference::IsDecoderUsingGpu() const {
     return litert_->decoder_using_gpu;
 }
 
-void OcrInference::UpdateEmbedding(int token_id, int index) {
+void OcrInference::UpdateEmbedding(int token_id, int index) noexcept {
     const int embed_offset = token_id * HIDDEN_SIZE;
     const int output_offset = index * HIDDEN_SIZE;
     std::memcpy(
@@ -576,15 +537,15 @@ void OcrInference::UpdateEmbedding(int token_id, int index) {
     );
 }
 
-int OcrInference::FindMaxLogitToken(const float* logits, int seq_len) {
+int OcrInference::FindMaxLogitToken(int seq_len) const noexcept {
     const int last_token_pos = seq_len - 1;
-    const int logits_offset = last_token_pos * VOCAB_SIZE;
+    const float* logits = litert_->decoder_logits.data() + (last_token_pos * VOCAB_SIZE);
 
-    float max_logit = -std::numeric_limits<float>::infinity();
-    int max_token = PAD_TOKEN_ID;
+    float max_logit = logits[0];
+    int max_token = 0;
 
-    for (int vocab_idx = 0; vocab_idx < VOCAB_SIZE; vocab_idx++) {
-        const float logit = logits[logits_offset + vocab_idx];
+    for (int vocab_idx = 1; vocab_idx < VOCAB_SIZE; ++vocab_idx) {
+        const float logit = logits[vocab_idx];
         if (logit > max_logit) {
             max_logit = logit;
             max_token = vocab_idx;
@@ -601,25 +562,9 @@ int OcrInference::InferTokens(const float* image_data, int* out_tokens, int max_
     }
 
     try {
-        LOGI("[ACCELERATOR] Encoder=%s, Decoder=%s",
-             litert_->encoder_using_gpu ? "GPU" : "CPU",
-             litert_->decoder_using_gpu ? "GPU" : "CPU");
-        // 1. Run encoder
-        LOGI("Running encoder...");
+        // Run encoder
         const size_t image_data_size = IMAGE_SIZE * IMAGE_SIZE * 3;
         
-        // Log buffer details
-        auto input_buffer_size_result = litert_->encoder_input_buffers[0].Size();
-        size_t input_buffer_size = 0;
-        if (input_buffer_size_result.HasValue()) {
-            input_buffer_size = input_buffer_size_result.Value();
-            LOGI("Encoder input buffer size: %zu bytes, Expected write size: %zu bytes", 
-                 input_buffer_size, image_data_size * sizeof(float));
-        } else {
-            LOGE("Failed to get encoder input buffer size");
-        }
-
-
         auto write_result = litert_->encoder_input_buffers[0].Write<float>(
             absl::MakeConstSpan(image_data, image_data_size)
         );
@@ -647,7 +592,6 @@ int OcrInference::InferTokens(const float* image_data, int* out_tokens, int max_
             LOGW("[PERF] Encoder GPU invocation exceeded %lld ms budget", static_cast<long long>(GPU_LATENCY_BUDGET_MS));
         }
 
-
         // Read encoder hidden states into our pre-allocated buffer
         auto read_result = litert_->encoder_output_buffers[0].Read<float>(
             absl::MakeSpan(litert_->encoder_hidden_states)
@@ -656,10 +600,8 @@ int OcrInference::InferTokens(const float* image_data, int* out_tokens, int max_
             LOGE("Failed to read encoder output");
             return 0;
         }
-        LOGI("Encoder output read successfully (%zu floats)", 
-             litert_->encoder_hidden_states.size());
 
-        // 2. Initialize decoder state
+        // Initialize decoder state
         std::fill(embeddings_input_.begin(), embeddings_input_.end(), 0.0f);
         std::fill(attention_mask_.begin(), attention_mask_.end(), 0.0f);
         std::fill(input_ids_.begin(), input_ids_.end(), PAD_TOKEN_ID);
@@ -672,19 +614,18 @@ int OcrInference::InferTokens(const float* image_data, int* out_tokens, int max_
         long long decoder_gpu_time_ms = 0;
         int decoder_iterations = 0;
 
-        // 3. Autoregressive decoder loop
-        LOGI("Starting decoder loop...");
-        for (int step = 0; step < MAX_SEQUENCE_LENGTH - 1; step++) {
-            // Write inputs to decoder
-            // Input 0: encoder hidden states
-            auto write_hidden_result = litert_->decoder_input_buffers[0].Write<float>(
-                absl::MakeConstSpan(litert_->encoder_hidden_states)
-            );
-            if (!write_hidden_result.HasValue()) {
-                LOGE("Failed to write decoder hidden states input");
-                break;
-            }
+        // Write encoder hidden states once before the loop (they don't change)
+        auto write_hidden_result = litert_->decoder_input_buffers[0].Write<float>(
+            absl::MakeConstSpan(litert_->encoder_hidden_states)
+        );
+        if (!write_hidden_result.HasValue()) {
+            LOGE("Failed to write decoder hidden states input");
+            return 0;
+        }
 
+        // Autoregressive decoder loop
+        for (int step = 0; step < MAX_SEQUENCE_LENGTH - 1; ++step) {
+            // Write inputs to decoder (only attention mask and embeddings change each iteration)
             // Input 1: attention mask
             auto write_mask_result = litert_->decoder_input_buffers[1].Write<float>(
                 absl::MakeConstSpan(attention_mask_.data(), MAX_SEQUENCE_LENGTH)
@@ -720,7 +661,6 @@ int OcrInference::InferTokens(const float* image_data, int* out_tokens, int max_
             decoder_iterations++;
 
 
-            // Read logits into pre-allocated buffer
             auto logits_result = litert_->decoder_output_buffers[0].Read<float>(
                 absl::MakeSpan(litert_->decoder_logits)
             );
@@ -729,10 +669,8 @@ int OcrInference::InferTokens(const float* image_data, int* out_tokens, int max_
                 break;
             }
 
-            const float* logits = litert_->decoder_logits.data();
-
-            // Find next token
-            const int next_token = FindMaxLogitToken(logits, token_count);
+            // Find next token (uses pre-allocated decoder_logits buffer)
+            const int next_token = FindMaxLogitToken(token_count);
 
             // Check for end conditions
             if (next_token < 0 || next_token == END_TOKEN_ID) {
@@ -777,6 +715,7 @@ int OcrInference::InferTokens(const float* image_data, int* out_tokens, int max_
 void OcrInference::Close() {
     if (initialized_) {
         LOGI("Closing OcrInference...");
+        const auto close_start = std::chrono::steady_clock::now();
         
         // Explicitly clear buffers first to release GPU resources
         if (litert_) {
@@ -810,16 +749,9 @@ void OcrInference::Close() {
         attention_mask_.clear();
         input_ids_.clear();
         
-        // Delete temporary model files
-        if (!encoder_model_path_.empty()) {
-            std::remove(encoder_model_path_.c_str());
-        }
-        if (!decoder_model_path_.empty()) {
-            std::remove(decoder_model_path_.c_str());
-        }
-        
         initialized_ = false;
         LOGI("OcrInference closed - all resources released");
+        LogDurationMs("OcrInference Close total", close_start);
     }
 }
 
