@@ -56,11 +56,11 @@ set_target_properties(litert_c_api PROPERTIES
 # See POST_BUILD command below that copies it to the output directory.
 
 # Collect C++ source files from litert/cc/
-file(GLOB_RECURSE LITERT_CC_SOURCES 
+file(GLOB_RECURSE LITERT_CC_SOURCES
     "${LITERT_DIST_DIR}/include/litert/cc/*.cc"
 )
 
-# NOTE: We do NOT compile litert/c/*.cc files because they have internal 
+# NOTE: We do NOT compile litert/c/*.cc files because they have internal
 # dependencies on headers not included in the prebuilt package.
 # Instead, we use stub implementations for the logger functions.
 
@@ -79,7 +79,7 @@ list(FILTER LITERT_ALL_SOURCES EXCLUDE REGEX ".*empty\\.cc")
 # Create C++ wrapper static library
 add_library(litert_cc_api STATIC ${LITERT_ALL_SOURCES})
 target_include_directories(litert_cc_api PUBLIC "${LITERT_DIST_DIR}/include")
-target_compile_options(litert_cc_api PRIVATE 
+target_compile_options(litert_cc_api PRIVATE
     -Wno-error=deprecated-declarations
     -Wno-deprecated-declarations
 )
@@ -99,7 +99,6 @@ target_link_libraries(litert_cc_api PUBLIC
     flatbuffers
 )
 
-
 # Build Project
 add_library(mihon_ocr SHARED
         ocr_native.cpp
@@ -118,17 +117,16 @@ target_link_libraries(mihon_ocr
         litert_cc_api
 )
 
-# --- GPU Accelerator (bundled for runtime dynamic loading) ---
-# The GPU accelerator library (libLiteRtOpenClAccelerator.so) is loaded at runtime
-# by LiteRT using dlopen(), NOT linked at compile time.
-# We use a custom target and POST_BUILD command to copy it to the output directory
-# so it gets bundled in the APK alongside libmihon_ocr.so.
-if(EXISTS "${LITERT_DIST_DIR}/lib/libLiteRtOpenClAccelerator.so")
-    # Copy the GPU accelerator to the same output directory as mihon_ocr
-    add_custom_command(TARGET mihon_ocr POST_BUILD
+add_custom_command(TARGET mihon_ocr POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${LITERT_DIST_DIR}/lib/libLiteRtOpenClAccelerator.so"
+        "$<TARGET_FILE_DIR:mihon_ocr>/libLiteRtOpenClAccelerator.so"
+    COMMENT "Copying GPU accelerator library for runtime loading"
+)
+
+add_custom_command(TARGET mihon_ocr POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${LITERT_DIST_DIR}/lib/libLiteRtOpenClAccelerator.so"
-            "$<TARGET_FILE_DIR:mihon_ocr>/libLiteRtOpenClAccelerator.so"
-        COMMENT "Copying GPU accelerator library for runtime loading"
-    )
-endif()
+        "${LITERT_DIST_DIR}/lib/libLiteRt.so"
+        "$<TARGET_FILE_DIR:mihon_ocr>/libLiteRt.so"
+        COMMENT "Copying core LiteRT library for runtime loading"
+)
