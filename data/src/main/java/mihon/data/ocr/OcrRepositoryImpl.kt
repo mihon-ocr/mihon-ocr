@@ -39,8 +39,7 @@ class OcrRepositoryImpl(
 
         init {
             // Load the GPU accelerator library first (if available)
-            // This must be done before loading mihon_ocr so that when LiteRT
-            // initializes, dlopen("libLiteRtOpenClAccelerator.so") can find it
+            // This must be done before loading mihon_ocr so its symbols can be used
             try {
                 val startLibLoad = System.nanoTime()
                 System.loadLibrary("LiteRtOpenClAccelerator")

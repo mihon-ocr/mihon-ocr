@@ -118,10 +118,20 @@ bool OcrInference::Initialize(
 
         void* opencl_lib = dlopen("libOpenCL.so", RTLD_NOW | RTLD_GLOBAL);
         if (!opencl_lib) {
+            // fallback for pixels
+            opencl_lib = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_GLOBAL);
+        }
+        if (!opencl_lib) {
+            // fallback for Android Automotive cars
+            opencl_lib = dlopen("libOpenCL-car.so", RTLD_NOW | RTLD_GLOBAL);
+        }
+        if (!opencl_lib) {
             opencl_lib = dlopen("/vendor/lib64/libOpenCL.so", RTLD_NOW | RTLD_GLOBAL);
             if (!opencl_lib) {
                 LOGW("Failed to load OpenCL library: %s", dlerror());
             }
+        } else {
+            LOGI("OpenCL library loaded successfully");
         }
 
         if (!TryCompileWithGpu(encoder_data, encoder_size, decoder_data, decoder_size)) {
