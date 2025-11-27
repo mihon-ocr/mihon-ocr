@@ -86,8 +86,7 @@ class OcrRepositoryImpl(
     override suspend fun recognizeText(image: Bitmap): String {
         // Wait for initialization to complete
         if (!initDeferred.await()) {
-            logcat(LogPriority.ERROR) { "Cannot recognize text: OCR engine failed to initialize" }
-            return ""
+            throw OcrException.InitializationError()
         }
 
         val result = inferenceMutex.withLock {
@@ -149,17 +148,17 @@ class OcrRepositoryImpl(
     }
 
     override fun close() {
-        scope.cancel() // Cancel any pending initialization
         runBlocking {
+            if (initDeferred.isActive) {
+                try { initDeferred.join() } catch(e: Exception) {}
+            }
             inferenceMutex.withLock {
                 if (initialized.getAndSet(false)) {
-                    val closeStart = System.nanoTime()
                     nativeOcrClose()
-                    val closeMs = (System.nanoTime() - closeStart) / NS_TO_MS
-                    logcat(LogPriority.INFO) { "Native OCR engine closed successfully (took $closeMs ms)" }
                 }
             }
         }
+        scope.cancel()
     }
 
     // Native methods for C++ inference

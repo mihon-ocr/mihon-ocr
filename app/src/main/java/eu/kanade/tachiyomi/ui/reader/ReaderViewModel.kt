@@ -834,6 +834,12 @@ class ReaderViewModel @JvmOverloads constructor(
                     mutableState.update { it.copy(isProcessingOcr = false) }
                     eventChannel.send(Event.OcrMemoryError)
                 }
+            } catch (e: OcrException.InitializationError) {
+                logcat(LogPriority.ERROR,e) { "Cannot recognize text: OCR engine failed to initialize" }
+                withUIContext {
+                    mutableState.update { it.copy(isProcessingOcr = false) }
+                    eventChannel.send(Event.OcrInitializationError)
+                }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "OCR processing failed" }
                 withUIContext {
@@ -1046,6 +1052,7 @@ class ReaderViewModel @JvmOverloads constructor(
         data class CopyImage(val uri: Uri) : Event
         data object OcrNoTextFound : Event
         data object OcrMemoryError: Event
+        data object OcrInitializationError : Event
         data object OcrError : Event
     }
 }

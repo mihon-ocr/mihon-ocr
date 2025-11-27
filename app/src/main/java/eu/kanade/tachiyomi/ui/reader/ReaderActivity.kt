@@ -250,6 +250,9 @@ class ReaderActivity : BaseActivity() {
                     ReaderViewModel.Event.OcrMemoryError -> {
                         toast(MR.strings.ocr_memory_error)
                     }
+                    ReaderViewModel.Event.OcrInitializationError -> {
+                        toast(MR.strings.ocr_initialization_error)
+                    }
                     ReaderViewModel.Event.OcrError -> {
                         toast(MR.strings.error_unknown)
                     }
