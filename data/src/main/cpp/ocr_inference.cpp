@@ -8,6 +8,7 @@
 #include <thread>
 #include <chrono>
 #include <future>
+#include <mutex> // Added for singleton synchronization
 
 // LiteRT Next C++ API headers
 #include "litert/cc/litert_compiled_model.h"
@@ -30,6 +31,11 @@
 
 namespace mihon {
 
+// Global static environment that survives OcrInference lifecycle
+// This prevents the GPU delegate context from being destroyed and failing to re-init
+static std::optional<litert::Environment> g_persist_env;
+static std::mutex g_env_mutex;
+
 // Helper to log duration with a consistent message format
 static void LogDurationMs(const char* label, const std::chrono::steady_clock::time_point& start) {
     const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -38,9 +44,8 @@ static void LogDurationMs(const char* label, const std::chrono::steady_clock::ti
     LOGI("%s took %lld ms", label, ms);
 }
 
-// Internal structure to hold LiteRT objects using optional for lazy initialization
+// Internal structure to hold LiteRT objects
 struct OcrInference::LiteRtObjects {
-    std::optional<litert::Environment> env;
     std::optional<litert::CompiledModel> compiled_encoder;
     std::optional<litert::CompiledModel> compiled_decoder;
 
@@ -88,22 +93,28 @@ bool OcrInference::Initialize(
 
         litert_ = std::make_unique<LiteRtObjects>();
 
-        const auto env_start = std::chrono::steady_clock::now();
+        {
+            std::lock_guard<std::mutex> lock(g_env_mutex);
 
-        std::vector<litert::Environment::Option> env_options;
-        env_options.push_back({
-            litert::Environment::OptionTag::DispatchLibraryDir,
-            litert::LiteRtVariant{native_lib_dir}
-        });
+            if (!g_persist_env.has_value()) {
+                const auto env_start = std::chrono::steady_clock::now();
 
-        auto env_result = litert::Environment::Create(env_options);
-        if (!env_result.HasValue()) {
-            LOGE("Failed to create LiteRT environment: %s",
-                 env_result.Error().Message().c_str());
-            return false;
+                std::vector<litert::Environment::Option> env_options;
+                env_options.push_back({
+                    litert::Environment::OptionTag::DispatchLibraryDir,
+                    litert::LiteRtVariant{native_lib_dir}
+                });
+
+                auto env_result = litert::Environment::Create(env_options);
+                if (!env_result.HasValue()) {
+                    LOGE("Failed to create LiteRT environment: %s",
+                         env_result.Error().Message().c_str());
+                    return false;
+                }
+                g_persist_env.emplace(std::move(env_result.Value()));
+                LogDurationMs("LiteRT Environment creation (Global)", env_start);
+            }
         }
-        litert_->env.emplace(std::move(env_result.Value()));
-        LogDurationMs("LiteRT Environment creation", env_start);
 
         void* opencl_lib = dlopen("libOpenCL.so", RTLD_NOW | RTLD_GLOBAL);
         if (!opencl_lib) {
@@ -330,7 +341,7 @@ bool OcrInference::TryCompileWithGpu(const uint8_t* encoder_data, size_t encoder
     auto encoder_future = std::async(std::launch::async, [this, encoder_data, encoder_size, opts = std::move(options)]() mutable {
         const auto encoder_compile_start = std::chrono::steady_clock::now();
         auto result = litert::CompiledModel::Create(
-            *litert_->env,
+            *g_persist_env,
             litert::BufferRef<uint8_t>(encoder_data, encoder_size),
             opts
         );
@@ -341,7 +352,7 @@ bool OcrInference::TryCompileWithGpu(const uint8_t* encoder_data, size_t encoder
     // Compile Decoder on the main thread
     const auto decoder_compile_start = std::chrono::steady_clock::now();
     auto compiled_decoder_result = litert::CompiledModel::Create(
-        *litert_->env,
+        *g_persist_env,
         litert::BufferRef<uint8_t>(decoder_data, decoder_size),
         decoder_options
     );
@@ -582,7 +593,9 @@ void OcrInference::Close() {
 
             litert_->compiled_encoder.reset();
             litert_->compiled_decoder.reset();
-            litert_->env.reset();
+
+            // Global g_persist_env is not destroyed
+            // This ensures the GPU/OpenCL context remains valid for re-initialization.
 
             if (litert_->using_gpu || litert_->encoder_using_gpu || litert_->decoder_using_gpu) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -596,8 +609,14 @@ void OcrInference::Close() {
         attention_mask_.clear();
         input_ids_.clear();
 
+        // Ensure memory is returned to OS
+        embeddings_.shrink_to_fit();
+        embeddings_input_.shrink_to_fit();
+        attention_mask_.shrink_to_fit();
+        input_ids_.shrink_to_fit();
+
         initialized_ = false;
-        LogDurationMs("OcrInference Close total", close_start);
+        LogDurationMs("OcrInference Close (Models Freed, Env Preserved)", close_start);
     }
 }
 
