@@ -8,6 +8,7 @@
 #include <memory>
 #include <chrono>
 #include <atomic>
+#include <mutex>
 #include "text_postprocessor.h"
 #include "vocab_data.h"
 #include "ocr_inference.h"
@@ -27,30 +28,72 @@ static constexpr int MAX_SEQUENCE_LENGTH = 300;
 static std::unique_ptr<mihon::TextPostprocessor> g_textPostprocessor;
 static std::vector<std::string> g_vocab;
 static std::unique_ptr<mihon::OcrInference> g_ocrInference;
+static std::mutex g_initMutex;
 static std::atomic<int> g_activeOcrClients{0};
 
 // Pre-allocated buffers for inference (avoid allocation per call)
 static std::vector<float> g_imageBuffer;
 static std::vector<int> g_tokenBuffer;
 
-// Helper function to read asset into memory
-static std::vector<uint8_t> ReadAsset(AAssetManager* assetManager, const char* filename) {
-    AAsset* asset = AAssetManager_open(assetManager, filename, AASSET_MODE_BUFFER);
-    if (!asset) {
-        LOGE("Failed to open asset: %s", filename);
-        return {};
+// Helper struct to manage AAsset lifecycle
+struct AssetBuffer {
+    AAsset* asset = nullptr;
+    const void* data = nullptr;
+    size_t size = 0;
+
+    AssetBuffer() = default;
+
+    // Disable copy to prevent double-free and use-after-free
+    AssetBuffer(const AssetBuffer&) = delete;
+    AssetBuffer& operator=(const AssetBuffer&) = delete;
+
+    // Enable move
+    AssetBuffer(AssetBuffer&& other) noexcept 
+        : asset(other.asset), data(other.data), size(other.size) {
+        other.asset = nullptr;
+        other.data = nullptr;
+        other.size = 0;
     }
 
-    const size_t length = AAsset_getLength(asset);
-    std::vector<uint8_t> buffer(length);
-    
-    const int bytesRead = AAsset_read(asset, buffer.data(), length);
-    AAsset_close(asset);
-    
-    if (bytesRead != length) {
-        LOGE("Failed to read full asset: %s (expected %zu, got %d)", filename, length, bytesRead);
-        return {};  
+    AssetBuffer& operator=(AssetBuffer&& other) noexcept {
+        if (this != &other) {
+            if (asset) {
+                AAsset_close(asset);
+            }
+            asset = other.asset;
+            data = other.data;
+            size = other.size;
+            other.asset = nullptr;
+            other.data = nullptr;
+            other.size = 0;
+        }
+        return *this;
     }
+
+    ~AssetBuffer() {
+        if (asset) {
+            AAsset_close(asset);
+        }
+    }
+};
+
+static AssetBuffer OpenAsset(AAssetManager* assetManager, const char* filename) {
+    AssetBuffer buffer;
+    buffer.asset = AAssetManager_open(assetManager, filename, AASSET_MODE_BUFFER);
+    if (!buffer.asset) {
+        LOGE("Failed to open asset: %s", filename);
+        return buffer;
+    }
+    
+    buffer.data = AAsset_getBuffer(buffer.asset);
+    buffer.size = AAsset_getLength(buffer.asset);
+    
+    if (!buffer.data) {
+        LOGE("Failed to get buffer for asset: %s", filename);
+        AAsset_close(buffer.asset);
+        buffer.asset = nullptr;
+    }
+    
     return buffer;
 }
 
@@ -125,6 +168,8 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
     
     LOGI("Initializing native OCR engine");
     
+    std::lock_guard<std::mutex> lock(g_initMutex);
+    
     try {
         if (g_ocrInference && g_ocrInference->IsInitialized()) {
             const int clients = g_activeOcrClients.fetch_add(1) + 1;
@@ -143,12 +188,12 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
             return JNI_FALSE;
         }
         
-        // Read model files and embeddings from assets
-        auto encoder_data = ReadAsset(mgr, "ocr/encoder.tflite");
-        auto decoder_data = ReadAsset(mgr, "ocr/decoder.tflite");
-        auto embeddings_data = ReadAsset(mgr, "ocr/embeddings.bin");
+        // Zero-copy asset loading
+        auto encoder_asset = OpenAsset(mgr, "ocr/encoder.tflite");
+        auto decoder_asset = OpenAsset(mgr, "ocr/decoder.tflite");
+        auto embeddings_asset = OpenAsset(mgr, "ocr/embeddings.bin");
         
-        if (encoder_data.empty() || decoder_data.empty() || embeddings_data.empty()) {
+        if (!encoder_asset.data || !decoder_asset.data || !embeddings_asset.data) {
             LOGE("Failed to read one or more assets");
             return JNI_FALSE;
         }
@@ -159,9 +204,9 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
         // Create OcrInference instance
         g_ocrInference = std::make_unique<mihon::OcrInference>();
         bool success = g_ocrInference->Initialize(
-            encoder_data.data(), encoder_data.size(),
-            decoder_data.data(), decoder_data.size(),
-            embeddings_data.data(), embeddings_data.size(),
+            static_cast<const uint8_t*>(encoder_asset.data), encoder_asset.size,
+            static_cast<const uint8_t*>(decoder_asset.data), decoder_asset.size,
+            static_cast<const uint8_t*>(embeddings_asset.data), embeddings_asset.size,
             cache_dir_str,
             native_lib_dir_str
         );
@@ -254,6 +299,9 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
 JNIEXPORT void JNICALL
 Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrClose(JNIEnv* env, jobject /* this */) {
     LOGI("Closing native OCR engine");
+    
+    std::lock_guard<std::mutex> lock(g_initMutex);
+
     int previous_clients = g_activeOcrClients.load();
     if (previous_clients > 1) {
         int remaining = g_activeOcrClients.fetch_sub(1) - 1;

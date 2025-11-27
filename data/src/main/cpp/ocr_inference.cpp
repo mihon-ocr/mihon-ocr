@@ -7,6 +7,7 @@
 #include <dlfcn.h>
 #include <thread>
 #include <chrono>
+#include <future>
 
 // LiteRT Next C++ API headers
 #include "litert/cc/litert_compiled_model.h"
@@ -300,52 +301,18 @@ bool OcrInference::TryCompileWithGpu(const uint8_t* encoder_data, size_t encoder
         return false;
     }
     auto options = std::move(options_result.Value());
-
     auto hw_result = options.SetHardwareAccelerators(litert::HwAccelerators::kGpu);
     if (!hw_result.HasValue()) {
         LOGW("Failed to set hardware accelerators: %s", hw_result.Error().Message().c_str());
         return false;
     }
-
     auto gpu_opts_result = options.GetGpuOptions();
     if (gpu_opts_result.HasValue()) {
         auto& gpu_opts = gpu_opts_result.Value();
-        auto precision_result = gpu_opts.SetPrecision(litert::GpuOptions::Precision::kFp16);
-        if (!precision_result.HasValue()) {
-            LOGW("Failed to set GPU precision to FP16: %s", precision_result.Error().Message().c_str());
-        }
-    } else {
-        LOGW("Failed to get GPU options: %s", gpu_opts_result.Error().Message().c_str());
+        gpu_opts.SetPrecision(litert::GpuOptions::Precision::kFp16);
     }
 
-    const auto encoder_compile_start = std::chrono::steady_clock::now();
-    auto compiled_encoder_result = litert::CompiledModel::Create(
-        *litert_->env,
-        litert::BufferRef<uint8_t>(encoder_data, encoder_size),
-        options
-    );
-    if (!compiled_encoder_result.HasValue()) {
-        const auto& error = compiled_encoder_result.Error();
-        LOGW("Failed to compile encoder with GPU: status=%d, message=%s",
-             static_cast<int>(error.Status()), error.Message().c_str());
-        return false;
-    }
-    LogDurationMs("Encoder GPU compile", encoder_compile_start);
-
-    auto encoder_accel_result = compiled_encoder_result.Value().IsFullyAccelerated();
-    if (encoder_accel_result.HasValue()) {
-        const bool encoder_fully = encoder_accel_result.Value();
-        if (!encoder_fully) {
-            LOGW("Encoder is not fully GPU-accelerated");
-            return false;
-        }
-    } else {
-        LOGW("Failed to query encoder acceleration status");
-        return false;
-    }
-
-    const auto decoder_compile_start = std::chrono::steady_clock::now();
-
+    // Prepare options for Decoder
     auto decoder_options_result = litert::Options::Create();
     if (!decoder_options_result.HasValue()) {
         LOGW("Failed to create options for decoder GPU compilation");
@@ -353,38 +320,61 @@ bool OcrInference::TryCompileWithGpu(const uint8_t* encoder_data, size_t encoder
     }
     auto decoder_options = std::move(decoder_options_result.Value());
     decoder_options.SetHardwareAccelerators(litert::HwAccelerators::kGpu);
-
     auto decoder_gpu_opts_result = decoder_options.GetGpuOptions();
     if (decoder_gpu_opts_result.HasValue()) {
         auto& decoder_gpu_opts = decoder_gpu_opts_result.Value();
-        auto precision_result = decoder_gpu_opts.SetPrecision(litert::GpuOptions::Precision::kFp16);
-        if (!precision_result.HasValue()) {
-            LOGW("Failed to set GPU precision to FP16");
-        }
+        decoder_gpu_opts.SetPrecision(litert::GpuOptions::Precision::kFp16);
     }
 
+    // Launch Encoder compilation asynchronously
+    auto encoder_future = std::async(std::launch::async, [this, encoder_data, encoder_size, opts = std::move(options)]() mutable {
+        const auto encoder_compile_start = std::chrono::steady_clock::now();
+        auto result = litert::CompiledModel::Create(
+            *litert_->env,
+            litert::BufferRef<uint8_t>(encoder_data, encoder_size),
+            opts
+        );
+        LogDurationMs("Encoder GPU compile (Async)", encoder_compile_start);
+        return result;
+    });
+
+    // Compile Decoder on the main thread
+    const auto decoder_compile_start = std::chrono::steady_clock::now();
     auto compiled_decoder_result = litert::CompiledModel::Create(
         *litert_->env,
         litert::BufferRef<uint8_t>(decoder_data, decoder_size),
         decoder_options
     );
+    LogDurationMs("Decoder GPU compile (Main Thread)", decoder_compile_start);
+
+    // Wait for Encoder compilation
+    auto compiled_encoder_result = encoder_future.get();
+
+    // Check Encoder results
+    if (!compiled_encoder_result.HasValue()) {
+        const auto& error = compiled_encoder_result.Error();
+        LOGW("Failed to compile encoder with GPU: status=%d, message=%s",
+             static_cast<int>(error.Status()), error.Message().c_str());
+        return false;
+    }
+
+    auto encoder_accel_result = compiled_encoder_result.Value().IsFullyAccelerated();
+    if (encoder_accel_result.HasValue() && !encoder_accel_result.Value()) {
+        LOGW("Encoder is not fully GPU-accelerated");
+        return false;
+    }
+
+    // Check Decoder results
     if (!compiled_decoder_result.HasValue()) {
         const auto& error = compiled_decoder_result.Error();
         LOGW("Failed to compile decoder with GPU: status=%d, message=%s",
              static_cast<int>(error.Status()), error.Message().c_str());
         return false;
     }
-    LogDurationMs("Decoder GPU compile", decoder_compile_start);
 
     auto decoder_accel_result = compiled_decoder_result.Value().IsFullyAccelerated();
-    if (decoder_accel_result.HasValue()) {
-        const bool decoder_fully = decoder_accel_result.Value();
-        if (!decoder_fully) {
-            LOGW("Decoder is not fully GPU-accelerated");
-            return false;
-        }
-    } else {
-        LOGW("Failed to query decoder acceleration status");
+    if (decoder_accel_result.HasValue() && !decoder_accel_result.Value()) {
+        LOGW("Decoder is not fully GPU-accelerated");
         return false;
     }
 
@@ -394,7 +384,7 @@ bool OcrInference::TryCompileWithGpu(const uint8_t* encoder_data, size_t encoder
     litert_->decoder_using_gpu = true;
     litert_->using_gpu = true;
 
-    LogDurationMs("TryCompileWithGpu total", try_compile_start);
+    LogDurationMs("TryCompileWithGpu total (Parallel)", try_compile_start);
     return true;
 }
 

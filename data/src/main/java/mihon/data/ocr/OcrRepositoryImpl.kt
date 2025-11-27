@@ -4,12 +4,19 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import androidx.core.graphics.scale
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import logcat.LogPriority
+import kotlinx.coroutines.cancel
 import mihon.domain.ocr.repository.OcrRepository
 import tachiyomi.core.common.util.system.logcat
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * OCR repository implementation using native LiteRT inference.
@@ -23,8 +30,9 @@ class OcrRepositoryImpl(
 
     private val inferenceMutex = Mutex()
 
-    @Volatile
-    private var initialized = false
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val initDeferred: Deferred<Boolean>
+    private val initialized = AtomicBoolean(false)
 
     companion object {
         private const val TAG = "MihonOCR_Native"
@@ -63,22 +71,30 @@ class OcrRepositoryImpl(
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
         Log.i(TAG, "Native library directory: $nativeLibDir")
 
-        val initStartNanos = System.nanoTime()
-        initialized = nativeOcrInit(context.assets, cacheDir, nativeLibDir)
-        val initDurationMs = (System.nanoTime() - initStartNanos) / NS_TO_MS
+        initDeferred = scope.async {
+            val initStartNanos = System.nanoTime()
+            val success = nativeOcrInit(context.assets, cacheDir, nativeLibDir)
+            val initDurationMs = (System.nanoTime() - initStartNanos) / NS_TO_MS
 
-        if (!initialized) {
-            Log.e(TAG, "Native OCR engine failed to initialize (took $initDurationMs ms)")
-            throw RuntimeException("Failed to initialize native OCR engine")
+            if (!success) {
+                Log.e(TAG, "Native OCR engine failed to initialize (took $initDurationMs ms)")
+            } else {
+                initialized.set(true)
+                logcat(LogPriority.INFO) { "Native OCR engine initialized successfully (took $initDurationMs ms)" }
+            }
+            success
         }
-
-        logcat(LogPriority.INFO) { "Native OCR engine initialized successfully (took $initDurationMs ms)" }
     }
 
     override suspend fun recognizeText(image: Bitmap): String {
+        // Wait for initialization to complete
+        if (!initDeferred.await()) {
+            Log.e(TAG, "Cannot recognize text: OCR engine failed to initialize")
+            return ""
+        }
+
         val result = inferenceMutex.withLock {
             check(!image.isRecycled) { "Input bitmap is recycled" }
-            check(initialized) { "OCR engine not initialized" }
 
             val prepStart = System.nanoTime()
             val workingBitmap = prepareImage(image)
@@ -136,13 +152,13 @@ class OcrRepositoryImpl(
     }
 
     override fun close() {
+        scope.cancel() // Cancel any pending initialization
         runBlocking {
             inferenceMutex.withLock {
-                if (initialized) {
+                if (initialized.getAndSet(false)) {
                     val closeStart = System.nanoTime()
                     nativeOcrClose()
                     val closeMs = (System.nanoTime() - closeStart) / NS_TO_MS
-                    initialized = false
                     logcat(LogPriority.INFO) { "Native OCR engine closed successfully (took $closeMs ms)" }
                     Log.i(PERF_TAG, "app.mihonocr.dev: OCR Close: nativeOcrClose took $closeMs ms")
                 }
