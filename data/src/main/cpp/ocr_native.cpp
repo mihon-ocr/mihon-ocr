@@ -49,10 +49,8 @@ static std::vector<uint8_t> ReadAsset(AAssetManager* assetManager, const char* f
     
     if (bytesRead != length) {
         LOGE("Failed to read full asset: %s (expected %zu, got %d)", filename, length, bytesRead);
-        return {};
+        return {};  
     }
-    
-    LOGI("Read asset %s: %zu bytes", filename, length);
     return buffer;
 }
 
@@ -130,12 +128,7 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
     try {
         if (g_ocrInference && g_ocrInference->IsInitialized()) {
             const int clients = g_activeOcrClients.fetch_add(1) + 1;
-            LOGI("Reusing existing native OCR engine (clients=%d)", clients);
-            LOGI("app.mihonocr.dev: Native OCR engine already initialized (ACCELERATOR_ENCODER=%s)",
-                 g_ocrInference->IsEncoderUsingGpu() ? "GPU" : "CPU");
-            LOGI("app.mihonocr.dev: Native OCR engine already initialized (ACCELERATOR_DECODER=%s)",
-                 g_ocrInference->IsDecoderUsingGpu() ? "GPU" : "CPU");
-            LOGI("app.mihonocr.dev: Native OCR engine already initialized (ACCELERATOR=%s/%s)",
+            LOGI("Reusing existing native OCR engine (clients=%d, ACCELERATOR=%s/%s)", clients,
                  g_ocrInference->IsEncoderUsingGpu() ? "GPU" : "CPU",
                  g_ocrInference->IsDecoderUsingGpu() ? "GPU" : "CPU");
             return JNI_TRUE;
@@ -143,7 +136,6 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
 
         g_textPostprocessor = std::make_unique<mihon::TextPostprocessor>();
         g_vocab = mihon::getVocabulary();
-        LOGI("Initialized helpers (vocab size: %zu)", g_vocab.size());
         
         AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
         if (!mgr) {
@@ -161,11 +153,8 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
             return JNI_FALSE;
         }
         
-        // Get cache directory path
         const char* cache_dir_str = env->GetStringUTFChars(cacheDir, nullptr);
         const char* native_lib_dir_str = env->GetStringUTFChars(nativeLibDir, nullptr);
-        LOGI("Cache directory: %s", cache_dir_str);
-        LOGI("Native lib directory: %s", native_lib_dir_str);
         
         // Create OcrInference instance
         g_ocrInference = std::make_unique<mihon::OcrInference>();
@@ -188,18 +177,12 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
         }
         g_activeOcrClients.store(1);
         
-        // Pre-allocate inference buffers
         g_imageBuffer.resize(IMAGE_SIZE * IMAGE_SIZE * 3);
         g_tokenBuffer.resize(MAX_SEQUENCE_LENGTH);
         
-           // Log which accelerator was selected (GPU/CPU) and per-model info
-           LOGI("app.mihonocr.dev: Native OCR engine initialized successfully (ACCELERATOR_ENCODER=%s)",
-               g_ocrInference->IsEncoderUsingGpu() ? "GPU" : "CPU");
-           LOGI("app.mihonocr.dev: Native OCR engine initialized successfully (ACCELERATOR_DECODER=%s)",
-               g_ocrInference->IsDecoderUsingGpu() ? "GPU" : "CPU");
-           LOGI("app.mihonocr.dev: Native OCR engine initialized successfully (ACCELERATOR=%s/%s)",
-               g_ocrInference->IsEncoderUsingGpu() ? "GPU" : "CPU",
-               g_ocrInference->IsDecoderUsingGpu() ? "GPU" : "CPU");
+        LOGI("app.mihonocr.dev: Native OCR engine initialized successfully (ACCELERATOR=%s/%s)",
+             g_ocrInference->IsEncoderUsingGpu() ? "GPU" : "CPU",
+             g_ocrInference->IsDecoderUsingGpu() ? "GPU" : "CPU");
         return JNI_TRUE;
         
     } catch (const std::exception& e) {
@@ -220,14 +203,11 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
     }
     
  try {
-        // Use pre-allocated buffers (already sized during init)
         float* image_data = g_imageBuffer.data();
         int* tokens = g_tokenBuffer.data();
         
-        // Preprocess bitmap directly into pre-allocated buffer
         PreprocessBitmap(env, bitmap, image_data);
         
-        // Run inference
         auto t0 = std::chrono::high_resolution_clock::now();
         const int token_count = g_ocrInference->InferTokens(
             image_data,
@@ -243,7 +223,6 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
             return env->NewStringUTF("");
         }
         
-        // Decode tokens to text (pre-reserve estimated size: ~3 bytes per token for Japanese)
         std::string result;
         result.reserve(static_cast<size_t>(token_count) * 3);
         
@@ -251,7 +230,6 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
         for (int i = 0; i < token_count; ++i) {
             const int tokenId = tokens[i];
             
-            // Skip special tokens (PAD, UNK, CLS, SEP, MASK)
             if (tokenId < SPECIAL_TOKEN_THRESHOLD) {
                 continue;
             }
@@ -261,7 +239,6 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
             }
         }
         
-        // Postprocess text
         if (g_textPostprocessor) {
             result = g_textPostprocessor->postprocess(result);
         }
@@ -292,7 +269,6 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrClose(JNIEnv* env, jobject /* thi
     g_textPostprocessor.reset();
     g_vocab.clear();
     
-    // Clear pre-allocated buffers
     g_imageBuffer.clear();
     g_imageBuffer.shrink_to_fit();
     g_tokenBuffer.clear();
