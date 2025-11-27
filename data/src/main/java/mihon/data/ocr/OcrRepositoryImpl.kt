@@ -2,7 +2,6 @@ package mihon.data.ocr
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
 import androidx.core.graphics.scale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -35,8 +34,6 @@ class OcrRepositoryImpl(
     private val initialized = AtomicBoolean(false)
 
     companion object {
-        private const val TAG = "MihonOCR_Native"
-        private const val PERF_TAG = "MihonOCR_Perf"
         private const val IMAGE_SIZE = 224
         private const val NS_TO_MS = 1_000_000L
 
@@ -48,9 +45,9 @@ class OcrRepositoryImpl(
                 val startLibLoad = System.nanoTime()
                 System.loadLibrary("LiteRtOpenClAccelerator")
                 val ms = (System.nanoTime() - startLibLoad) / NS_TO_MS
-                Log.i(TAG, "Loaded LiteRtOpenClAccelerator.so for GPU acceleration (took $ms ms)")
+                logcat(LogPriority.INFO) { "Loaded LiteRtOpenClAccelerator.so for GPU acceleration (took $ms ms)" }
             } catch (e: UnsatisfiedLinkError) {
-                Log.w(TAG, "GPU accelerator library not available: ${e.message}")
+                logcat(LogPriority.WARN, e) { "GPU accelerator library not available: ${e.message}" }
             }
 
             // Now load the main library
@@ -58,9 +55,9 @@ class OcrRepositoryImpl(
                 val startLoadMain = System.nanoTime()
                 System.loadLibrary("mihon_ocr")
                 val ms = (System.nanoTime() - startLoadMain) / NS_TO_MS
-                Log.i(TAG, "Loaded mihon_ocr main native library (took $ms ms)")
+                logcat(LogPriority.INFO) { "Loaded mihon_ocr main native library (took $ms ms)" }
             } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "Failed to load mihon_ocr native library: ${e.message}")
+                logcat(LogPriority.ERROR, e) { "Failed to load mihon_ocr native library: ${e.message}" }
                 throw e
             }
         }
@@ -69,7 +66,7 @@ class OcrRepositoryImpl(
     init {
         val cacheDir = context.cacheDir.absolutePath
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
-        Log.i(TAG, "Native library directory: $nativeLibDir")
+        logcat(LogPriority.INFO) { "Native library directory: $nativeLibDir" }
 
         initDeferred = scope.async {
             val initStartNanos = System.nanoTime()
@@ -77,7 +74,7 @@ class OcrRepositoryImpl(
             val initDurationMs = (System.nanoTime() - initStartNanos) / NS_TO_MS
 
             if (!success) {
-                Log.e(TAG, "Native OCR engine failed to initialize (took $initDurationMs ms)")
+                logcat(LogPriority.ERROR) { "Native OCR engine failed to initialize (took $initDurationMs ms)" }
             } else {
                 initialized.set(true)
                 logcat(LogPriority.INFO) { "Native OCR engine initialized successfully (took $initDurationMs ms)" }
@@ -89,7 +86,7 @@ class OcrRepositoryImpl(
     override suspend fun recognizeText(image: Bitmap): String {
         // Wait for initialization to complete
         if (!initDeferred.await()) {
-            Log.e(TAG, "Cannot recognize text: OCR engine failed to initialize")
+            logcat(LogPriority.ERROR) { "Cannot recognize text: OCR engine failed to initialize" }
             return ""
         }
 
@@ -102,7 +99,7 @@ class OcrRepositoryImpl(
             if (prepMs > 0) {
                 // Log only if there was measurable preparation time to reduce noise
                 logcat(LogPriority.INFO) { "OCR: prepareImage took $prepMs ms" }
-                Log.i(PERF_TAG, "app.mihonocr.dev: OCR Prep: prepareImage took $prepMs ms")
+                logcat(LogPriority.INFO) { "app.mihonocr.dev: OCR Prep: prepareImage took $prepMs ms" }
             }
 
             try {
@@ -160,7 +157,6 @@ class OcrRepositoryImpl(
                     nativeOcrClose()
                     val closeMs = (System.nanoTime() - closeStart) / NS_TO_MS
                     logcat(LogPriority.INFO) { "Native OCR engine closed successfully (took $closeMs ms)" }
-                    Log.i(PERF_TAG, "app.mihonocr.dev: OCR Close: nativeOcrClose took $closeMs ms")
                 }
             }
         }
