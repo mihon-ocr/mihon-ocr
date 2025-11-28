@@ -15,6 +15,7 @@ markdown = "0.37.0"
 junit = "6.0.0"
 wanakana-core-version = "1.1.1"
 core-ktx-version = "1.7.0"
+litert = "v2.1.0rc1" # Used by CMakeLists
 
 [libraries]
 desugar = "com.android.tools:desugar_jdk_libs:2.1.5"

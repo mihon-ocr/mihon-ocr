@@ -6,6 +6,10 @@ project("mihon_ocr")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(NOT DEFINED LITERT_VERSION)
+    message(FATAL_ERROR "LITERT_VERSION is not defined")
+endif()
+
 # Find required Android packages
 find_library(log-lib log)
 find_library(android-lib android)
@@ -35,8 +39,8 @@ FetchContent_MakeAvailable(flatbuffers)
 
 # Fetch Pre-built LiteRT Next
 FetchContent_Declare(
-        litert_prebuilt
-        URL "https://github.com/mihon-ocr/litert-cpp-dist/releases/download/v2.1.0rc1/litert_android_arm64.zip"
+    litert_prebuilt
+    URL "https://github.com/mihon-ocr/litert-cpp-dist/releases/download/${LITERT_VERSION}/litert_android_arm64.zip"
 )
 FetchContent_Populate(litert_prebuilt)
 
@@ -101,20 +105,20 @@ target_link_libraries(litert_cc_api PUBLIC
 
 # Build Project
 add_library(mihon_ocr SHARED
-        ocr_native.cpp
-        ocr_inference.cpp
-        text_postprocessor.cpp
-        vocab_data.cpp
+    ocr_native.cpp
+    ocr_inference.cpp
+    text_postprocessor.cpp
+    vocab_data.cpp
 )
 
 # Link against the imported targets
 target_link_libraries(mihon_ocr
-        # Android system libs
-        ${log-lib}
-        ${android-lib}
-        ${jnigraphics-lib}
-        # LiteRT C++ API (which transitively links to litert_c_api and abseil)
-        litert_cc_api
+    # Android system libs
+    ${log-lib}
+    ${android-lib}
+    ${jnigraphics-lib}
+    # LiteRT C++ API (which links to litert_c_api and abseil)
+    litert_cc_api
 )
 
 add_custom_command(TARGET mihon_ocr POST_BUILD
@@ -125,8 +129,8 @@ add_custom_command(TARGET mihon_ocr POST_BUILD
 )
 
 add_custom_command(TARGET mihon_ocr POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${LITERT_DIST_DIR}/lib/libLiteRt.so"
         "$<TARGET_FILE_DIR:mihon_ocr>/libLiteRt.so"
-        COMMENT "Copying core LiteRT library for runtime loading"
+    COMMENT "Copying core LiteRT library for runtime loading"
 )
