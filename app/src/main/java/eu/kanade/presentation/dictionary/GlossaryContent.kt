@@ -24,6 +24,7 @@ import mihon.domain.dictionary.model.GlossaryEntry
 import mihon.domain.dictionary.model.GlossaryImageAttributes
 import mihon.domain.dictionary.model.GlossaryNode
 import mihon.domain.dictionary.model.GlossaryTag
+import com.turtlekazu.furiganable.compose.m3.TextWithReading
 
 @Composable
 fun GlossarySection(
@@ -63,11 +64,12 @@ private fun FormsRow(forms: List<String>, modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.SemiBold,
         )
-        Text(
-            text = forms.joinToString(", "),
+        TextWithReading(
+            formattedText = forms.joinToString(", "),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontStyle = FontStyle.Italic,
+            furiganaFontSize = MaterialTheme.typography.bodySmall.fontSize * 0.60f,
         )
     }
 }
@@ -100,9 +102,10 @@ private fun DefinitionRow(text: String, indentLevel: Int) {
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(end = 6.dp),
         )
-        Text(
-            text = text,
+        TextWithReading(
+            formattedText = text,
             style = MaterialTheme.typography.bodyMedium,
+            furiganaFontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.60f,
         )
     }
 }
@@ -275,9 +278,10 @@ private fun StructuredListItem(
         )
 
         if (!inlineText.isNullOrBlank() && !containsLink) {
-            Text(
-                text = inlineText,
+            TextWithReading(
+                formattedText = inlineText,
                 style = MaterialTheme.typography.bodyMedium,
+                furiganaFontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.60f,
             )
         } else {
             Column {
@@ -326,15 +330,16 @@ private fun RubyNode(
     val baseText = collectText(baseNodes)
     val readingText = collectText(readingNodes)
 
-    val display = if (readingText.isNotBlank()) {
-        "$baseText ($readingText)"
+    val furiganaText = if (readingText.isNotBlank()) {
+        "[$baseText[$readingText]]"
     } else {
         baseText
     }
 
-    Text(
-        text = display,
+    TextWithReading(
+        formattedText = furiganaText,
         style = textStyle,
+        furiganaFontSize = textStyle.fontSize * 0.60f,
         modifier = modifier.padding(bottom = 2.dp),
     )
 }
@@ -386,10 +391,10 @@ private fun DetailsNode(
 @Composable
 private fun SummaryNode(node: GlossaryNode.Element, indentLevel: Int) {
     val summary = collectText(node.children)
-    Text(
-        text = summary,
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.SemiBold,
+    TextWithReading(
+        formattedText = summary,
+        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+        furiganaFontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.65f,
         modifier = Modifier.padding(start = bulletIndent(indentLevel), bottom = 2.dp),
     )
 }
@@ -426,11 +431,12 @@ private fun ExampleSentenceNode(
         val engSpan = sentenceBNode?.children?.filterIsInstance<GlossaryNode.Element>()?.firstOrNull()
         if (engSpan != null) {
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = collectText(engSpan.children),
+            TextWithReading(
+                formattedText = collectText(engSpan.children),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontStyle = FontStyle.Italic,
+                furiganaFontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.60f,
             )
         }
     }
@@ -452,19 +458,24 @@ internal fun InlineNode(
         is GlossaryNode.LineBreak -> { /* Ignore in inline context */ }
         is GlossaryNode.Element -> {
             val isChildKeyword = isKeyword || node.attributes.dataAttributes["content"] == "example-keyword"
+            val effectiveTextStyle = if (isChildKeyword) {
+                textStyle.copy(fontWeight = FontWeight.SemiBold)
+            } else {
+                textStyle
+            }
             when (node.tag) {
-                GlossaryTag.Ruby -> RubyNode(node, modifier = Modifier, textStyle = textStyle)
+                GlossaryTag.Ruby -> RubyNode(node, modifier = Modifier, textStyle = effectiveTextStyle)
                 GlossaryTag.Span -> {
                     node.children.forEach { InlineNode(it, onLinkClick, isChildKeyword, textStyle) }
                 }
-                GlossaryTag.Link -> LinkNode(node, onLinkClick, modifier = Modifier, textStyle = textStyle)
+                GlossaryTag.Link -> LinkNode(node, onLinkClick, modifier = Modifier, textStyle = effectiveTextStyle)
                 else -> {
                     val text = collectText(listOf(node))
                     if (text.isNotBlank()) {
-                        Text(
-                            text = text,
-                            style = textStyle,
-                            fontWeight = if (isChildKeyword) FontWeight.SemiBold else null,
+                        TextWithReading(
+                            formattedText = text,
+                            style = effectiveTextStyle,
+                            furiganaFontSize = textStyle.fontSize * 0.65f,
                         )
                     }
                 }

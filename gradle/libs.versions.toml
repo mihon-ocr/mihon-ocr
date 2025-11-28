@@ -14,6 +14,7 @@ firebase-bom = "34.3.0"
 markdown = "0.37.0"
 junit = "6.0.0"
 wanakana-core-version = "1.1.1"
+furiganable = "0.2.2"
 core-ktx-version = "1.7.0"
 litert = "v2.1.0rc1" # Used by CMakeLists
 
@@ -113,6 +114,7 @@ markdown-coil = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3",
 stringSimilarity = { module = "com.aallam.similarity:string-similarity-kotlin", version = "0.1.0" }
 wanakana-core = { module = "dev.esnault.wanakana:wanakana-core", version.ref = "wanakana-core-version" }
 core-ktx = { group = "androidx.test", name = "core-ktx", version.ref = "core-ktx-version" }
+furiganable = { module = "com.turtlekazu.furiganable:compose-m3", version.ref = "furiganable" }
 
 [plugins]
 google-services = { id = "com.google.gms.google-services", version = "4.4.3" }

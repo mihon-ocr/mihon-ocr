@@ -275,6 +275,7 @@ dependencies {
     implementation(libs.compose.grid)
     implementation(libs.reorderable)
     implementation(libs.bundles.markdown)
+    implementation(libs.furiganable)
 
     // Logging
     implementation(libs.logcat)

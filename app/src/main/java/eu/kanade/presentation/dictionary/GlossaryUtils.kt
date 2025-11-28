@@ -58,11 +58,14 @@ internal fun StringBuilder.appendRubyInline(node: GlossaryNode.Element) {
     val baseText = collectText(baseNodes)
     val readingText = collectText(readingNodes)
 
-    append(baseText)
     if (readingText.isNotBlank()) {
-        append(" (")
+        append("[")
+        append(baseText)
+        append("[")
         append(readingText)
-        append(')')
+        append("]]")
+    } else {
+        append(baseText)
     }
 }
 

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import mihon.domain.dictionary.model.GlossaryNode
 import mihon.domain.dictionary.model.GlossaryTag
+import com.turtlekazu.furiganable.compose.m3.TextWithReading
 
 @Composable
 internal fun TableNode(
@@ -130,18 +131,20 @@ private fun TableCellNode(
                         }
                     }
                 } else if (cellContent.isNotBlank()) {
-                    Text(
-                        text = cellContent,
+                    TextWithReading(
+                        formattedText = cellContent,
                         style = textStyle,
+                        furiganaFontSize = textStyle.fontSize * 0.60f,
                     )
                 } else {
                     Text(text = "", style = textStyle)
                 }
             }
             cellContent.isNotBlank() -> {
-                Text(
-                    text = cellContent,
+                TextWithReading(
+                    formattedText = cellContent,
                     style = textStyle,
+                    furiganaFontSize = textStyle.fontSize * 0.60f,
                 )
             }
             else -> {
