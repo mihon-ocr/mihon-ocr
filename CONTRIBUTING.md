@@ -2,7 +2,7 @@ Looking to report an issue/bug or make a feature request? Please refer to the [R
 
 ---
 
-Thanks for your interest in contributing to Mihon!
+Thanks for your interest in contributing to MihonOCR!
 
 
 # Code contributions
@@ -18,6 +18,9 @@ Before you start, please note that the ability to use following technologies is 
 
 - Basic [Android development](https://developer.android.com/)
 - [Kotlin](https://kotlinlang.org/)
+- It's recommended to download the float32 encoder, decoder, and embeddings from [Hugging Face](https://huggingface.co/bluolightning/manga-ocr-tflite/tree/main)
+  - Move the model files to the `app/src/main/assets/ocr/` directory
+  - Rename the files to `encoder.tflite`, `decoder.tflite`, and `embeddings.tflite`
 
 ### Tools
 
