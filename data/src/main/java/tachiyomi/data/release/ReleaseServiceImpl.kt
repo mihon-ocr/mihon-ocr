@@ -49,7 +49,7 @@ class ReleaseServiceImpl(
 
     companion object {
         private const val FOSS = "foss"
-        private val BUILD_TYPES = listOf(FOSS, "arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+        private val BUILD_TYPES = listOf(FOSS, "arm64-v8a", "x86_64")
 
         /**
          * Regular expression that matches a mention to a valid GitHub username, like it's

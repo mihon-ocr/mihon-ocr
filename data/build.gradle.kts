@@ -21,8 +21,9 @@ android {
             }
         }
 
+        // TODO: "armeabi-v7a" and "x86" architecture support - requires changes to TFLite
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
 
