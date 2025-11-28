@@ -22,9 +22,7 @@ android {
         }
 
         ndk {
-            // Only arm64-v8a is supported by the prebuilt LiteRT C++ distribution
-            // TODO: Add other types
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
         }
     }
 

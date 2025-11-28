@@ -40,44 +40,41 @@ FetchContent_MakeAvailable(flatbuffers)
 # Fetch Pre-built LiteRT Next
 FetchContent_Declare(
     litert_prebuilt
-    URL "https://github.com/mihon-ocr/litert-cpp-dist/releases/download/${LITERT_VERSION}/litert_android_arm64.zip"
+    URL "https://github.com/mihon-ocr/litert-cpp-dist/releases/download/${LITERT_VERSION}/litert_android.zip"
 )
 FetchContent_Populate(litert_prebuilt)
 
 # Define where the extracted LiteRT files are
 set(LITERT_DIST_DIR "${litert_prebuilt_SOURCE_DIR}")
 
+# Set the dir to the same as the ABI being built
+set(LITERT_ABI_LIB_DIR "${LITERT_DIST_DIR}/lib/${ANDROID_ABI}")
+
+# Ensure the ABI requested by Gradle actually exists in the package
+if(NOT EXISTS "${LITERT_ABI_LIB_DIR}")
+    message(FATAL_ERROR "LiteRT library not found for ABI: ${ANDROID_ABI}")
+endif()
+
 # Create LiteRT C API imported target (the shared library)
 add_library(litert_c_api SHARED IMPORTED GLOBAL)
+
+# Point to the ABI-specific path
 set_target_properties(litert_c_api PROPERTIES
-    IMPORTED_LOCATION "${LITERT_DIST_DIR}/lib/libLiteRt.so"
+    IMPORTED_LOCATION "${LITERT_ABI_LIB_DIR}/libLiteRt.so"
     INTERFACE_INCLUDE_DIRECTORIES "${LITERT_DIST_DIR}/include"
     IMPORTED_NO_SONAME TRUE
 )
-
-# Note: libLiteRtOpenClAccelerator.so is NOT linked at compile time.
-# It is dynamically loaded by LiteRT at runtime using dlopen().
-# See POST_BUILD command below that copies it to the output directory.
 
 # Collect C++ source files from litert/cc/
 file(GLOB_RECURSE LITERT_CC_SOURCES
     "${LITERT_DIST_DIR}/include/litert/cc/*.cc"
 )
 
-# NOTE: We do NOT compile litert/c/*.cc files because they have internal
-# dependencies on headers not included in the prebuilt package.
-# Instead, we use stub implementations for the logger functions.
-
-# Combine all sources (only CC wrapper sources + our logger stub)
 list(APPEND LITERT_ALL_SOURCES ${LITERT_CC_SOURCES})
 list(APPEND LITERT_ALL_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/litert_logger_stub.cpp")
-
-# Exclude darwinn (Apple-specific TPU) and webnn (web-specific)
 list(FILTER LITERT_ALL_SOURCES EXCLUDE REGEX ".*darwinn.*")
 list(FILTER LITERT_ALL_SOURCES EXCLUDE REGEX ".*webnn.*")
-# Exclude Windows-specific files
 list(FILTER LITERT_ALL_SOURCES EXCLUDE REGEX ".*_win\\.cc")
-# Exclude empty placeholder file
 list(FILTER LITERT_ALL_SOURCES EXCLUDE REGEX ".*empty\\.cc")
 
 # Create C++ wrapper static library
@@ -111,26 +108,29 @@ add_library(mihon_ocr SHARED
     vocab_data.cpp
 )
 
-# Link against the imported targets
 target_link_libraries(mihon_ocr
-    # Android system libs
     ${log-lib}
     ${android-lib}
     ${jnigraphics-lib}
-    # LiteRT C++ API (which links to litert_c_api and abseil)
     litert_cc_api
 )
 
-add_custom_command(TARGET mihon_ocr POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${LITERT_DIST_DIR}/lib/libLiteRtOpenClAccelerator.so"
+# Check if the GPU library exists for this ABI before trying to copy it
+# (armeabi-v7a and x86 does not yet have the OpenCL accelerator)
+set(GPU_LIB_SOURCE "${LITERT_ABI_LIB_DIR}/libLiteRtOpenClAccelerator.so")
+
+if(EXISTS "${GPU_LIB_SOURCE}")
+    add_custom_command(TARGET mihon_ocr POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${GPU_LIB_SOURCE}"
         "$<TARGET_FILE_DIR:mihon_ocr>/libLiteRtOpenClAccelerator.so"
-    COMMENT "Copying GPU accelerator library for runtime loading"
-)
+        COMMENT "Copying GPU accelerator library for runtime loading"
+    )
+endif()
 
 add_custom_command(TARGET mihon_ocr POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${LITERT_DIST_DIR}/lib/libLiteRt.so"
-        "$<TARGET_FILE_DIR:mihon_ocr>/libLiteRt.so"
+    "${LITERT_ABI_LIB_DIR}/libLiteRt.so"
+    "$<TARGET_FILE_DIR:mihon_ocr>/libLiteRt.so"
     COMMENT "Copying core LiteRT library for runtime loading"
 )
