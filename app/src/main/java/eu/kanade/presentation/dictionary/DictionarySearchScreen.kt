@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -38,13 +37,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.tachiyomi.ui.dictionary.DictionarySearchScreenModel
@@ -320,24 +316,15 @@ private fun NoDictionariesEnabledMessage(
                 textAlign = TextAlign.Center,
             )
 
-            val linkText = buildAnnotatedString {
-                pushStringAnnotation(tag = "settings", annotation = "settings")
-                withStyle(
-                    SpanStyle(
-                        color = MaterialTheme.colorScheme.primary,
-                        textDecoration = TextDecoration.Underline,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                ) {
-                    append(stringResource(MR.strings.dictionary_manage_settings))
-                }
-                pop()
-            }
-
-            ClickableText(
-                text = linkText,
-                style = MaterialTheme.typography.bodyMedium.copy(textAlign = TextAlign.Center),
-                onClick = { onOpenDictionarySettings() },
+            Text(
+                text = stringResource(MR.strings.dictionary_manage_settings),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
+                ),
+                modifier = Modifier.clickable { onOpenDictionarySettings() }
             )
         }
     }
