@@ -13,10 +13,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -25,6 +26,8 @@ import mihon.domain.dictionary.model.GlossaryImageAttributes
 import mihon.domain.dictionary.model.GlossaryNode
 import mihon.domain.dictionary.model.GlossaryTag
 import com.turtlekazu.furiganable.compose.m3.TextWithReading
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
 @Composable
 fun GlossarySection(
@@ -351,27 +354,77 @@ private fun LinkNode(
     modifier: Modifier = Modifier,
     textStyle: TextStyle = MaterialTheme.typography.bodyMedium,
 ) {
-    val linkText = collectText(node.children).ifBlank { node.attributes.properties["href"] ?: "" }
     val href = node.attributes.properties["href"]
-    val display = if (!href.isNullOrBlank() && !href.startsWith("?query")) {
-        "$linkText (${href})"
+    val linkText = collectText(node.children).ifBlank { href ?: "" }
+
+    var queryParam: String? = null
+    var typeParam: String? = null
+    var primaryReadingParam: String? = null
+
+    // Extract search parameters if href starts with '?'
+    if (href?.startsWith("?") == true) {
+        val params = href.drop(1).split("&")
+
+        params.forEach { param ->
+            val parts = param.split("=", limit = 2)
+            if (parts.size == 2) {
+                val key = parts[0]
+                val rawValue = parts[1]
+
+                val decodedValue = try {
+                    URLDecoder.decode(rawValue, StandardCharsets.UTF_8.toString())
+                } catch (e: Exception) {
+                    rawValue
+                }
+
+                when (key) {
+                    "query" -> queryParam = decodedValue
+                    "type" -> typeParam = decodedValue
+                    "primaryReading" -> primaryReadingParam = decodedValue
+                    else -> {}
+                }
+            }
+        }
+    }
+
+    // Logic to determine display text and click target
+    val isDictionaryLink = queryParam != null
+
+    val displayText = if (isDictionaryLink) {
+        linkText
+    } else if (!href.isNullOrBlank()) {
+        "$linkText ($href)"
     } else {
-        // Has no href or uses a `?query` link, which is ignored
         linkText
     }
-    val trimmedLink = linkText.trim()
-    Text(
-        text = display,
+
+    val clickTarget = queryParam ?: href ?: linkText
+
+    val linkColor = MaterialTheme.colorScheme.primary
+    TextWithReading(
+        formattedText = displayText,
         style = textStyle,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(bottom = 2.dp)
-            .clickable(enabled = trimmedLink.isNotEmpty()) {
-                if (trimmedLink.isNotEmpty()) {
-                    onLinkClick(trimmedLink)
-                }
-            },
+        color = linkColor,
         fontWeight = FontWeight.Medium,
-        textDecoration = TextDecoration.Underline,
+        furiganaFontSize = textStyle.fontSize * 0.60f,
+        modifier = modifier
+            .padding(bottom = 2.dp)
+            .clickable(enabled = clickTarget.isNotEmpty()) {
+                if (clickTarget.isNotEmpty()) {
+                    onLinkClick(clickTarget)
+                }
+            }
+            .drawBehind {
+                val strokeWidth = 1.dp.toPx()
+                val verticalOffset = (-1).dp.toPx()
+                val y = size.height + verticalOffset - (strokeWidth / 2)
+                drawLine(
+                    color = linkColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = strokeWidth,
+                )
+            }
     )
 }
 
