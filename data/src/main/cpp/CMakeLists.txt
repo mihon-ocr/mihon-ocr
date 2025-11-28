@@ -115,6 +115,8 @@ target_link_libraries(mihon_ocr
     litert_cc_api
 )
 
+target_link_options(mihon_ocr PRIVATE "-Wl,-z,max-page-size=16384")
+
 # Check if the GPU library exists for this ABI before trying to copy it
 # (armeabi-v7a and x86 does not yet have the OpenCL accelerator)
 set(GPU_LIB_SOURCE "${LITERT_ABI_LIB_DIR}/libLiteRtOpenClAccelerator.so")
