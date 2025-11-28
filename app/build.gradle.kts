@@ -149,6 +149,10 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+
+    androidResources {
+        noCompress.addAll(listOf("tflite", "bin"))
+    }
 }
 
 kotlin {

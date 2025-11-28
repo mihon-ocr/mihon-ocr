@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include <cstdint>
+#include <android/asset_manager.h>
 
 namespace mihon {
 
@@ -16,9 +17,9 @@ public:
     // Initialize with model data from memory buffers
     // Returns true on success, false on failure
     bool Initialize(
-        const uint8_t* encoder_data, size_t encoder_size,
-        const uint8_t* decoder_data, size_t decoder_size,
-        const uint8_t* embeddings_data, size_t embeddings_size,
+        AAsset* encoder_asset,
+        AAsset* decoder_asset,
+        AAsset* embeddings_asset,
         const char* cache_dir,
         const char* native_lib_dir
     );
@@ -33,14 +34,12 @@ public:
 
     bool IsInitialized() const { return initialized_; }
 
-    // Returns true if the inference pipeline was initialized to use GPU
-    bool IsUsingGpu() const;
     // Per-model GPU status checks
     bool IsEncoderUsingGpu() const;
     bool IsDecoderUsingGpu() const;
 
 private:
-    // Constants from Kotlin implementation
+    // Model constants
     static constexpr int IMAGE_SIZE = 224;
     static constexpr int MAX_SEQUENCE_LENGTH = 300;
     static constexpr int VOCAB_SIZE = 6144;
@@ -48,17 +47,19 @@ private:
     static constexpr int START_TOKEN_ID = 2;
     static constexpr int END_TOKEN_ID = 3;
     static constexpr int PAD_TOKEN_ID = 0;
-    static constexpr int64_t GPU_LATENCY_BUDGET_MS = 500;
 
     // Opaque pointers to LiteRT objects (forward declared to avoid exposing LiteRT headers)
     struct LiteRtObjects;
     std::unique_ptr<LiteRtObjects> litert_;
 
+    AAsset* encoder_asset_ = nullptr;
+    AAsset* decoder_asset_ = nullptr;
     // Embeddings and working memory
-    std::vector<float> embeddings_;
+    AAsset* embeddings_asset_ = nullptr;
+    const float* embeddings_data_ = nullptr;
+    size_t embedding_count_ = 0;
     std::vector<float> embeddings_input_;
     std::vector<float> attention_mask_;
-    std::vector<int> input_ids_;
 
     bool initialized_ = false;
 
@@ -66,9 +67,11 @@ private:
     void UpdateEmbedding(int token_id, int index) noexcept;
     int FindMaxLogitToken(int seq_len) const noexcept;
     bool TryCompileWithGpu(const uint8_t* encoder_data, size_t encoder_size, const uint8_t* decoder_data, size_t decoder_size);
+    bool TryCompileWithCpu(const uint8_t* encoder_data, size_t encoder_size, const uint8_t* decoder_data, size_t decoder_size);
     bool PerformWarmup();
     bool CreateBuffers();
-    
+    static int GetOptimalThreadCount() noexcept;
+
     // Cached sizes from actual model outputs (determined during buffer creation)
     size_t encoder_output_size_ = 0;
     size_t decoder_output_size_ = 0;

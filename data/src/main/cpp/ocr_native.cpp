@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <chrono>
 #include <atomic>
 #include <mutex>
 #include "text_postprocessor.h"
@@ -16,6 +15,8 @@
 #define LOG_TAG "MihonOCR_Native"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+static std::mutex g_inferenceMutex;
 
 // Constants matching Kotlin implementation
 static constexpr int IMAGE_SIZE = 224;
@@ -35,124 +36,39 @@ static std::atomic<int> g_activeOcrClients{0};
 static std::vector<float> g_imageBuffer;
 static std::vector<int> g_tokenBuffer;
 
-// Helper struct to manage AAsset lifecycle
-struct AssetBuffer {
-    AAsset* asset = nullptr;
-    const void* data = nullptr;
-    size_t size = 0;
-
-    AssetBuffer() = default;
-
-    // Disable copy to prevent double-free and use-after-free
-    AssetBuffer(const AssetBuffer&) = delete;
-    AssetBuffer& operator=(const AssetBuffer&) = delete;
-
-    // Enable move
-    AssetBuffer(AssetBuffer&& other) noexcept 
-        : asset(other.asset), data(other.data), size(other.size) {
-        other.asset = nullptr;
-        other.data = nullptr;
-        other.size = 0;
-    }
-
-    AssetBuffer& operator=(AssetBuffer&& other) noexcept {
-        if (this != &other) {
-            if (asset) {
-                AAsset_close(asset);
-            }
-            asset = other.asset;
-            data = other.data;
-            size = other.size;
-            other.asset = nullptr;
-            other.data = nullptr;
-            other.size = 0;
-        }
-        return *this;
-    }
-
-    ~AssetBuffer() {
-        if (asset) {
-            AAsset_close(asset);
-        }
-    }
-};
-
-static AssetBuffer OpenAsset(AAssetManager* assetManager, const char* filename) {
-    AssetBuffer buffer;
-    buffer.asset = AAssetManager_open(assetManager, filename, AASSET_MODE_BUFFER);
-    if (!buffer.asset) {
-        LOGE("Failed to open asset: %s", filename);
-        return buffer;
-    }
-    
-    buffer.data = AAsset_getBuffer(buffer.asset);
-    buffer.size = AAsset_getLength(buffer.asset);
-    
-    if (!buffer.data) {
-        LOGE("Failed to get buffer for asset: %s", filename);
-        AAsset_close(buffer.asset);
-        buffer.asset = nullptr;
-    }
-    
-    return buffer;
-}
-
 static void PreprocessBitmap(JNIEnv* env, jobject bitmap, float* output) {
     AndroidBitmapInfo info;
     void* pixels;
-    
+
     if (AndroidBitmap_getInfo(env, bitmap, &info) < 0) {
         LOGE("Failed to get bitmap info");
         return;
     }
-    
+
     if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) {
         LOGE("Failed to lock bitmap pixels");
         return;
     }
-    
+
     try {
-        int width = info.width;
-        int height = info.height;
-        uint32_t* srcPixels = static_cast<uint32_t*>(pixels);
-        
-        if (width == IMAGE_SIZE && height == IMAGE_SIZE) {
-            int outIndex = 0;
-            for (int i = 0; i < IMAGE_SIZE * IMAGE_SIZE; i++) {
-                uint32_t pixel = srcPixels[i];
-                int r = (pixel >> 16) & 0xFF;
-                int g = (pixel >> 8) & 0xFF;
-                int b = pixel & 0xFF;
-                
-                output[outIndex++] = r * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
-                output[outIndex++] = g * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
-                output[outIndex++] = b * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
-            }
-        } else {
-            float scaleX = static_cast<float>(width) / IMAGE_SIZE;
-            float scaleY = static_cast<float>(height) / IMAGE_SIZE;
-            
-            int outIndex = 0;
-            for (int y = 0; y < IMAGE_SIZE; y++) {
-                for (int x = 0; x < IMAGE_SIZE; x++) {
-                    int srcX = static_cast<int>(x * scaleX);
-                    int srcY = static_cast<int>(y * scaleY);
-                    uint32_t pixel = srcPixels[srcY * width + srcX];
-                    
-                    int r = (pixel >> 16) & 0xFF;
-                    int g = (pixel >> 8) & 0xFF;
-                    int b = pixel & 0xFF;
-                    
-                    output[outIndex++] = r * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
-                    output[outIndex++] = g * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
-                    output[outIndex++] = b * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
-                }
-            }
+        auto* srcPixels = static_cast<uint32_t*>(pixels);
+        int outIndex = 0;
+
+        for (int i = 0; i < IMAGE_SIZE * IMAGE_SIZE; i++) {
+            uint32_t pixel = srcPixels[i];
+            int r = (pixel >> 16) & 0xFF;
+            int g = (pixel >> 8) & 0xFF;
+            int b = pixel & 0xFF;
+
+            output[outIndex++] = r * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
+            output[outIndex++] = g * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
+            output[outIndex++] = b * NORMALIZATION_FACTOR - NORMALIZED_MEAN;
         }
+
     } catch (const std::exception& e) {
         LOGE("Exception during preprocessing: %s", e.what());
     }
-    
+
     AndroidBitmap_unlockPixels(env, bitmap);
 }
 
@@ -165,11 +81,11 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
     jobject assetManager,
     jstring cacheDir,
     jstring nativeLibDir) {
-    
+
     LOGI("Initializing native OCR engine");
-    
+
     std::lock_guard<std::mutex> lock(g_initMutex);
-    
+
     try {
         if (g_ocrInference && g_ocrInference->IsInitialized()) {
             const int clients = g_activeOcrClients.fetch_add(1) + 1;
@@ -181,39 +97,42 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
 
         g_textPostprocessor = std::make_unique<mihon::TextPostprocessor>();
         g_vocab = mihon::getVocabulary();
-        
+
         AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
         if (!mgr) {
             LOGE("Failed to get AAssetManager");
             return JNI_FALSE;
         }
-        
+
         // Zero-copy asset loading
-        auto encoder_asset = OpenAsset(mgr, "ocr/encoder.tflite");
-        auto decoder_asset = OpenAsset(mgr, "ocr/decoder.tflite");
-        auto embeddings_asset = OpenAsset(mgr, "ocr/embeddings.bin");
-        
-        if (!encoder_asset.data || !decoder_asset.data || !embeddings_asset.data) {
-            LOGE("Failed to read one or more assets");
+        AAsset* enc_asset = AAssetManager_open(mgr, "ocr/encoder.tflite", AASSET_MODE_BUFFER);
+        AAsset* dec_asset = AAssetManager_open(mgr, "ocr/decoder.tflite", AASSET_MODE_BUFFER);
+        AAsset* emb_asset = AAssetManager_open(mgr, "ocr/embeddings.bin", AASSET_MODE_BUFFER);
+
+        if (!enc_asset || !dec_asset || !emb_asset) {
+            LOGE("Failed to open assets");
+            if (enc_asset) AAsset_close(enc_asset);
+            if (dec_asset) AAsset_close(dec_asset);
+            if (emb_asset) AAsset_close(emb_asset);
             return JNI_FALSE;
         }
-        
+
         const char* cache_dir_str = env->GetStringUTFChars(cacheDir, nullptr);
         const char* native_lib_dir_str = env->GetStringUTFChars(nativeLibDir, nullptr);
-        
-        // Create OcrInference instance
+
+        // Create OcrInference instance (assets are now owned by OcrInference)
         g_ocrInference = std::make_unique<mihon::OcrInference>();
         bool success = g_ocrInference->Initialize(
-            static_cast<const uint8_t*>(encoder_asset.data), encoder_asset.size,
-            static_cast<const uint8_t*>(decoder_asset.data), decoder_asset.size,
-            static_cast<const uint8_t*>(embeddings_asset.data), embeddings_asset.size,
+            enc_asset,
+            dec_asset,
+            emb_asset,
             cache_dir_str,
             native_lib_dir_str
         );
-        
+
         env->ReleaseStringUTFChars(cacheDir, cache_dir_str);
         env->ReleaseStringUTFChars(nativeLibDir, native_lib_dir_str);
-        
+
         if (!success) {
             LOGE("Failed to initialize OcrInference");
             g_ocrInference.reset();
@@ -221,15 +140,15 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrInit(
             return JNI_FALSE;
         }
         g_activeOcrClients.store(1);
-        
+
         g_imageBuffer.resize(IMAGE_SIZE * IMAGE_SIZE * 3);
         g_tokenBuffer.resize(MAX_SEQUENCE_LENGTH);
-        
+
         LOGI("app.mihonocr.dev: Native OCR engine initialized successfully (ACCELERATOR=%s/%s)",
              g_ocrInference->IsEncoderUsingGpu() ? "GPU" : "CPU",
              g_ocrInference->IsDecoderUsingGpu() ? "GPU" : "CPU");
         return JNI_TRUE;
-        
+
     } catch (const std::exception& e) {
         LOGE("Exception during OCR initialization: %s", e.what());
         return JNI_FALSE;
@@ -241,18 +160,20 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
     JNIEnv* env,
     jobject /* this */,
     jobject bitmap) {
-    
+
+    std::lock_guard<std::mutex> lock(g_inferenceMutex);
+
     if (!g_ocrInference || !g_ocrInference->IsInitialized()) {
         LOGE("OcrInference not initialized");
         return env->NewStringUTF("");
     }
-    
+
  try {
         float* image_data = g_imageBuffer.data();
         int* tokens = g_tokenBuffer.data();
-        
+
         PreprocessBitmap(env, bitmap, image_data);
-        
+
         auto t0 = std::chrono::high_resolution_clock::now();
         const int token_count = g_ocrInference->InferTokens(
             image_data,
@@ -262,34 +183,34 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
         auto t1 = std::chrono::high_resolution_clock::now();
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
         LOGI("app.mihonocr.dev: Native inference overall time: %lld ms", static_cast<long long>(diff));
-        
+
         if (token_count <= 0) {
             LOGE("Inference failed or produced no tokens");
             return env->NewStringUTF("");
         }
-        
+
         std::string result;
         result.reserve(static_cast<size_t>(token_count) * 3);
-        
+
         const int vocab_size = static_cast<int>(g_vocab.size());
         for (int i = 0; i < token_count; ++i) {
             const int tokenId = tokens[i];
-            
+
             if (tokenId < SPECIAL_TOKEN_THRESHOLD) {
                 continue;
             }
-            
+
             if (tokenId < vocab_size) {
                 result += g_vocab[tokenId];
             }
         }
-        
+
         if (g_textPostprocessor) {
             result = g_textPostprocessor->postprocess(result);
         }
-        
+
         return env->NewStringUTF(result.c_str());
-        
+
     } catch (const std::exception& e) {
         LOGE("Exception during recognition: %s", e.what());
         return env->NewStringUTF("");
@@ -299,7 +220,7 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeRecognizeText(
 JNIEXPORT void JNICALL
 Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrClose(JNIEnv* env, jobject /* this */) {
     LOGI("Closing native OCR engine");
-    
+
     std::lock_guard<std::mutex> lock(g_initMutex);
 
     int previous_clients = g_activeOcrClients.load();
@@ -316,12 +237,12 @@ Java_mihon_data_ocr_OcrRepositoryImpl_nativeOcrClose(JNIEnv* env, jobject /* thi
     }
     g_textPostprocessor.reset();
     g_vocab.clear();
-    
+
     g_imageBuffer.clear();
     g_imageBuffer.shrink_to_fit();
     g_tokenBuffer.clear();
     g_tokenBuffer.shrink_to_fit();
-    
+
     LOGI("Native OCR engine closed");
 }
 
