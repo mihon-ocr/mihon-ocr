@@ -7,6 +7,7 @@
 #include <thread>
 #include <future>
 #include <mutex> // Added for singleton synchronization
+#include <sys/mman.h>
 
 // LiteRT Next C++ API headers
 #include "litert/cc/litert_compiled_model.h"
@@ -36,6 +37,24 @@ static void LogDurationMs(const char* label, const std::chrono::steady_clock::ti
         std::chrono::steady_clock::now() - start
     ).count();
     LOGI("%s took %lld ms", label, ms);
+}
+
+// Helper to free model assets from RAM
+static void ReleaseSystemPages(const void* ptr, size_t size) {
+    // align ptr to page size (usually 4kb)
+    auto addr = reinterpret_cast<uintptr_t>(ptr);
+    size_t page_size = sysconf(_SC_PAGESIZE);
+    uintptr_t base = addr & ~(page_size - 1);
+
+    // Calculate new size including the offset
+    size_t len = size + (addr - base);
+
+    int result = madvise(reinterpret_cast<void*>(base), len, MADV_DONTNEED);
+    if (result != 0) {
+        LOGW("Failed to madvise pages: %s", strerror(errno));
+    } else {
+        LOGI("Released %zu bytes of model data from RAM cache", size);
+    }
 }
 
 int OcrInference::GetOptimalThreadCount() noexcept {
@@ -145,7 +164,11 @@ bool OcrInference::Initialize(
 
         if (opencl_available) {
             compiled = TryCompileWithGpu(encoder_data, encoder_size, decoder_data, decoder_size);
-            if (!compiled) {
+            if (compiled) {
+                // Release encoder and decoder assets, as they are no longer needed
+                ReleaseSystemPages(encoder_data, encoder_size);
+                ReleaseSystemPages(decoder_data, decoder_size);
+            } else {
                 LOGW("GPU compilation failed, attempting CPU compilation...");
             }
         }
