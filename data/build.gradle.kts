@@ -10,6 +10,27 @@ android {
 
     defaultConfig {
         consumerProguardFiles("consumer-rules.pro")
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++20"
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    "-DLITERT_VERSION=${libs.versions.litert.get()}"
+                )
+            }
+        }
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     sqldelight {
@@ -34,8 +55,9 @@ dependencies {
     implementation(projects.domain)
     implementation(projects.core.common)
 
-    // OCR
-    implementation(libs.litert)
-
     api(libs.bundles.sqldelight)
+
+    testImplementation(libs.bundles.test)
+    testImplementation(kotlinx.coroutines.test)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }

@@ -1048,6 +1048,7 @@
     <string name="import_dictionary">Import Dictionary</string>
     <string name="importing_dictionary">Importing Dictionary</string>
     <string name="deleting_dictionary">Deleting Dictionary</string>
+    <string name="deleting_dictionary">Deleting Dictionary</string>
     <string name="installed_dictionaries">Installed Dictionaries</string>
     <string name="no_dictionaries">No Dictionaries Installed</string>
     <string name="dictionary_delete_success">Dictionary Successfully Deleted</string>
@@ -1065,6 +1066,9 @@
     <string name="dictionary_no_enabled">No dictionaries are enabled.</string>
     <string name="no_dictionaries_enabled">No Dictionaries Enabled</string>
     <string name="dictionary_manage_settings">Manage dictionaries in settings</string>
+    <string name="dictionary_no_enabled">No dictionaries are enabled.</string>
+    <string name="no_dictionaries_enabled">No Dictionaries Enabled</string>
+    <string name="dictionary_manage_settings">Manage dictionaries in settings</string>
 
     <!-- OCR Related -->
     <string name="action_ocr">OCR text recognition</string>
@@ -1072,5 +1076,6 @@
     <string name="ocr_select_region">Drag to select text region</string>
     <string name="ocr_processing">Processing OCR…</string>
     <string name="error_unknown">Unknown OCR Error Occurred</string>
-    <string name="ocr_memory_error">Out of memory when running OCR</string>
+    <string name="ocr_memory_error">Not Enough Memory to Run OCR</string>
+    <string name="ocr_initialization_error">OCR Initialization Failed</string>
 </resources>

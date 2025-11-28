@@ -11,7 +11,7 @@ data class DictionaryTerm(
     val definitionTags: String?, // Comma-separated tags
     val rules: String?, // Comma-separated rules
     val score: Int,
-    val glossary: List<String>, // JSON array of definitions
+    val glossary: List<GlossaryEntry>, // Serialized tree per definition entry
     val sequence: Long? = null,
     val termTags: String? = null, // Comma-separated tags
 )

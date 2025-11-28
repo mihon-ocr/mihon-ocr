@@ -149,6 +149,10 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+
+    androidResources {
+        noCompress.addAll(listOf("tflite", "bin"))
+    }
 }
 
 kotlin {
@@ -290,6 +294,11 @@ dependencies {
     implementation(libs.leakcanary.plumber)
 
     testImplementation(kotlinx.coroutines.test)
+
+    androidTestImplementation(androidx.test.ext)
+    androidTestImplementation(libs.core.ktx)
+    androidTestImplementation(libs.runner)
+    androidTestImplementation(kotlinx.coroutines.test)
 }
 
 androidComponents {

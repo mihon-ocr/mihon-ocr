@@ -139,33 +139,40 @@ class DictionarySettingsScreenModel(
             val dataJson = stream.bufferedReader().readText()
 
             try {
+                var imported = false
                 when {
                     fileName.matches(termMetaRegex) -> {
                         val termMeta = dictionaryParser.parseTermMetaBank(dataJson)
                         importDictionary.importTermMeta(termMeta, dictionaryId)
+                        imported = true
                     }
                     fileName.matches(kanjiMetaRegex) -> {
                         val kanjiMeta = dictionaryParser.parseKanjiMetaBank(dataJson)
                         importDictionary.importKanjiMeta(kanjiMeta, dictionaryId)
+                        imported = true
                     }
                     fileName.matches(termRegex) -> {
                         val terms = dictionaryParser.parseTermBank(dataJson, index.effectiveVersion)
                         importDictionary.importTerms(terms, dictionaryId)
+                        imported = true
                     }
                     fileName.matches(kanjiRegex) -> {
                         val kanji = dictionaryParser.parseKanjiBank(dataJson, index.effectiveVersion)
                         importDictionary.importKanji(kanji, dictionaryId)
+                        imported = true
                     }
                     fileName.matches(tagRegex) -> {
                         val tags = dictionaryParser.parseTagBank(dataJson)
                         importDictionary.importTags(tags, dictionaryId)
+                        imported = true
                     }
+                }
+                if (imported) {
+                    logcat(LogPriority.INFO) { "Successfully imported $fileName" }
                 }
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { "Failed to parse or import $fileName" }
             }
-
-            logcat(LogPriority.INFO) { "Successfully imported $fileName" }
         }
     }
 
