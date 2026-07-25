@@ -27,7 +27,7 @@ internal class OcrPageSourceGatewayImpl(
         chapter: Chapter,
         source: Source,
     ): ResolvedOcrPages {
-        val chapterPath = downloadProvider.findChapterDir(chapter.name, chapter.scanlator, manga.title, source)
+        val chapterPath = downloadProvider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, manga.title, source)
         if (chapterPath?.isFile == true) {
             return resolveArchivePages(chapterPath)
         }

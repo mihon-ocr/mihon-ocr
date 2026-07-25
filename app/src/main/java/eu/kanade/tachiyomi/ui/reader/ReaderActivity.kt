@@ -49,8 +49,11 @@ import androidx.core.transition.doOnEnd
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.graphics.ColorUtils
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
+import com.google.android.material.elevation.SurfaceColors
 import com.google.android.material.transition.platform.MaterialContainerTransform
 import com.hippo.unifile.UniFile
 import dev.icerock.moko.resources.StringResource
@@ -220,7 +223,7 @@ class ReaderActivity : BaseActivity() {
 
     private fun screenRectToDialogRootRect(rect: android.graphics.RectF): android.graphics.RectF {
         val location = IntArray(2)
-        binding.dialogRoot.getLocationOnScreen(location)
+        binding.root.getLocationOnScreen(location)
         return android.graphics.RectF(
             rect.left - location[0],
             rect.top - location[1],
@@ -231,7 +234,7 @@ class ReaderActivity : BaseActivity() {
 
     private fun dialogRootRectToScreenRect(rect: android.graphics.RectF): android.graphics.RectF {
         val location = IntArray(2)
-        binding.dialogRoot.getLocationOnScreen(location)
+        binding.root.getLocationOnScreen(location)
         return android.graphics.RectF(
             rect.left + location[0],
             rect.top + location[1],
@@ -447,7 +450,7 @@ class ReaderActivity : BaseActivity() {
                     onSave = viewModel::saveImage,
                 )
             }
-            null -> {}
+            is ReaderViewModel.Dialog.OcrResult, null -> {}
         }
     }
 
@@ -548,7 +551,7 @@ class ReaderActivity : BaseActivity() {
 
         if (::binding.isInitialized && viewModel.state.value.ocrSelectionMode) {
             val loc = IntArray(2)
-            binding.dialogRoot.getLocationOnScreen(loc)
+            binding.root.getLocationOnScreen(loc)
             val x = ev.rawX - loc[0]
             val y = ev.rawY - loc[1]
 
@@ -607,7 +610,7 @@ class ReaderActivity : BaseActivity() {
             ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
         }
 
-        binding.dialogRoot.setComposeContent {
+        binding.composeOverlay.setComposeContent {
             val state by viewModel.state.collectAsState()
             val dimOcrBackground by dictionaryPreferences.ocrResultDimBackground().collectAsState()
             val ocrResultPresentation by dictionaryPreferences.ocrResultPresentation().collectAsState()
@@ -617,7 +620,6 @@ class ReaderActivity : BaseActivity() {
             val settingsScreenModel = remember {
                 ReaderSettingsScreenModel(
                     readerState = viewModel.state,
-                    hasDisplayCutout = hasCutout,
                     onChangeReadingMode = viewModel::setMangaReadingMode,
                     onChangeOrientation = viewModel::setMangaOrientationType,
                 )
@@ -661,20 +663,37 @@ class ReaderActivity : BaseActivity() {
 
             Box(modifier = Modifier.fillMaxSize()) {
                 val isHttpSource = viewModel.getSource() is HttpSource
-                val isFullscreen by readerPreferences.fullscreen().collectAsState()
-                val flashOnPageChange by readerPreferences.flashOnPageChange().collectAsState()
+                val isFullscreen by readerPreferences.fullscreen.collectAsState()
+                val flashOnPageChange by readerPreferences.flashOnPageChange.collectAsState()
 
-                val colorOverlayEnabled by readerPreferences.colorFilter().collectAsState()
-                val colorOverlay by readerPreferences.colorFilterValue().collectAsState()
-                val colorOverlayMode by readerPreferences.colorFilterMode().collectAsState()
+                val colorOverlayEnabled by readerPreferences.colorFilter.collectAsState()
+                val colorOverlay by readerPreferences.colorFilterValue.collectAsState()
+                val colorOverlayMode by readerPreferences.colorFilterMode.collectAsState()
                 val colorOverlayBlendMode = remember(colorOverlayMode) {
                     ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
                 }
 
-                val cropBorderPaged by readerPreferences.cropBorders().collectAsState()
-                val cropBorderWebtoon by readerPreferences.cropBordersWebtoon().collectAsState()
-                val isPagerType = ReadingMode.isPagerType(viewModel.getMangaReadingMode())
+                val cropBorderPaged by readerPreferences.cropBorders.collectAsState()
+                val cropBorderWebtoon by readerPreferences.cropBordersWebtoon.collectAsState()
+                val readingMode = ReadingMode.fromPreference(
+                    viewModel.getMangaReadingMode(resolveDefault = false),
+                )
+                val isPagerType = ReadingMode.isPagerType(readingMode.flagValue)
                 val cropEnabled = if (isPagerType) cropBorderPaged else cropBorderWebtoon
+
+                val verticalNavigator by readerPreferences.verticalNavigator.collectAsState()
+                val verticalNavigatorOnLeft by readerPreferences.verticalNavigatorOnLeft.collectAsState()
+                val rawVerticalNavigatorHeight by readerPreferences.verticalNavigatorHeight.collectAsState()
+                val verticalNavigatorHeight = remember(rawVerticalNavigatorHeight) { rawVerticalNavigatorHeight / 100f }
+
+                val chapterNavigatorType = remember(readingMode, verticalNavigator, verticalNavigatorOnLeft) {
+                    when {
+                        verticalNavigator.contains(readingMode) && verticalNavigatorOnLeft -> ChapterNavigatorType.VERTICAL_LEFT
+                        verticalNavigator.contains(readingMode) -> ChapterNavigatorType.VERTICAL_RIGHT
+                        readingMode == ReadingMode.RIGHT_TO_LEFT -> ChapterNavigatorType.HORIZONTAL_RTL
+                        else -> ChapterNavigatorType.HORIZONTAL_LTR
+                    }
+                }
 
                 ReaderContentOverlay(
                     brightness = state.brightnessOverlayValue,
@@ -684,7 +703,6 @@ class ReaderActivity : BaseActivity() {
 
                 ReaderAppBars(
                     visible = state.menuVisible,
-                    fullscreen = isFullscreen,
 
                     mangaTitle = state.manga?.title,
                     chapterTitle = state.currentChapter?.chapter?.name,
@@ -696,7 +714,8 @@ class ReaderActivity : BaseActivity() {
                     onOpenInBrowser = ::openChapterInBrowser.takeIf { isHttpSource },
                     onShare = ::shareChapter.takeIf { isHttpSource },
 
-                    viewer = state.viewer,
+                    chapterNavigatorType = chapterNavigatorType,
+                    verticalNavigatorHeight = verticalNavigatorHeight,
                     onNextChapter = ::loadNextChapter,
                     enabledNext = state.viewerChapters?.nextChapter != null,
                     onPreviousChapter = ::loadPreviousChapter,
@@ -708,9 +727,7 @@ class ReaderActivity : BaseActivity() {
                         moveToPageIndex(it)
                     },
 
-                    readingMode = ReadingMode.fromPreference(
-                        viewModel.getMangaReadingMode(resolveDefault = false),
-                    ),
+                    readingMode = readingMode,
                     onClickReadingMode = viewModel::openReadingModeSelectDialog,
                     orientation = ReaderOrientation.fromPreference(
                         viewModel.getMangaOrientation(resolveDefault = false),
@@ -779,7 +796,7 @@ class ReaderActivity : BaseActivity() {
                             screenModel = settingsScreenModel,
                             onChange = { stringRes ->
                                 menuToggleToast?.cancel()
-                                if (!readerPreferences.showReadingMode().get()) {
+                                if (!readerPreferences.showReadingMode.get()) {
                                     menuToggleToast = toast(stringRes)
                                 }
                             },
@@ -950,6 +967,7 @@ class ReaderActivity : BaseActivity() {
                 menuToggleToast = toast(if (enabled) MR.strings.on else MR.strings.off)
             },
             onClickSettings = viewModel::openSettingsDialog,
+            onClickOcr = ::enterOcrMode,
         )
     }
 
@@ -1394,7 +1412,7 @@ class ReaderActivity : BaseActivity() {
     private fun enterSelectionMode() {
         resetOcrDrag()
         dismissActiveOcrOverlaySession()
-        if (!readerPreferences.fullscreen().get()) {
+        if (!readerPreferences.fullscreen.get()) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             updateViewerInset(fullscreen = true)
         }
@@ -1408,7 +1426,7 @@ class ReaderActivity : BaseActivity() {
             last.actionMasked != MotionEvent.ACTION_CANCEL
         ) {
             val loc = IntArray(2)
-            binding.dialogRoot.getLocationOnScreen(loc)
+            binding.root.getLocationOnScreen(loc)
             val x = last.rawX - loc[0]
             val y = last.rawY - loc[1]
             ocrDragStart = Offset(x, y)
@@ -1423,7 +1441,7 @@ class ReaderActivity : BaseActivity() {
         resetOcrDrag()
         selectionAction = SelectionAction.ProcessOcr
         viewModel.exitOcrMode()
-        if (!readerPreferences.fullscreen().get()) {
+        if (!readerPreferences.fullscreen.get()) {
             WindowCompat.setDecorFitsSystemWindows(window, true)
             updateViewerInset(fullscreen = false)
             windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
@@ -1493,7 +1511,10 @@ class ReaderActivity : BaseActivity() {
     /**
      * Updates viewer inset depending on fullscreen reader preferences.
      */
-    private fun updateViewerInset(fullscreen: Boolean, drawUnderCutout: Boolean) {
+    private fun updateViewerInset(
+        fullscreen: Boolean = readerPreferences.fullscreen.get(),
+        drawUnderCutout: Boolean = readerPreferences.drawUnderCutout.get(),
+    ) {
         if (!::binding.isInitialized) return
         val view = binding.viewerContainer
 

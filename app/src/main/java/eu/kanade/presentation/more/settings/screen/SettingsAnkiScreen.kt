@@ -130,7 +130,7 @@ object SettingsAnkiScreen : SearchableSettings {
         val decks = state.decks.mapKeys { it.key.toString() }.toMutableMap()
         decks[CREATE_NEW_ID.toString()] = stringResource(MR.strings.anki_create_new_deck)
 
-        val items = mutableListOf<Preference.PreferenceItem<out Any>>()
+        val items = mutableListOf<Preference.PreferenceItem<out Any, out Any>>()
 
         items.add(
             Preference.PreferenceItem.BasicListPreference(
@@ -185,7 +185,7 @@ object SettingsAnkiScreen : SearchableSettings {
         state: AnkiSettingsScreenModel.State,
         screenModel: AnkiSettingsScreenModel,
     ): Preference.PreferenceGroup {
-        val mappingItems = mutableListOf<Preference.PreferenceItem<out Any>>()
+        val mappingItems = mutableListOf<Preference.PreferenceItem<out Any, out Any>>()
 
         mappingItems.add(
             Preference.PreferenceItem.InfoPreference(

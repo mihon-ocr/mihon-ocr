@@ -528,7 +528,7 @@ object SettingsDictionaryScreen : Screen {
 private fun rememberOcrResultPreferences(
     dictionaryPreferences: DictionaryPreferences,
     isPopup: Boolean,
-): List<Preference.PreferenceItem<out Any>> {
+): List<Preference.PreferenceItem<out Any, out Any>> {
     val popupWidthPref = remember(dictionaryPreferences) { dictionaryPreferences.ocrResultPopupWidthDp() }
     val popupWidth by popupWidthPref.collectPreferenceAsState()
 
@@ -591,7 +591,7 @@ private fun rememberOcrResultPreferences(
 
 @Composable
 private fun OcrResultPreferenceGroup(
-    preferences: List<Preference.PreferenceItem<out Any>>,
+    preferences: List<Preference.PreferenceItem<out Any, out Any>>,
 ) {
     Box(
         modifier = Modifier

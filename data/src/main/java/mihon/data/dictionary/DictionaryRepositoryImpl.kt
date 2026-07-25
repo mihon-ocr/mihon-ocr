@@ -17,14 +17,18 @@ import mihon.domain.dictionary.model.DictionaryTerm
 import mihon.domain.dictionary.model.DictionaryTermExport
 import mihon.domain.dictionary.model.DictionaryTermMeta
 import mihon.domain.dictionary.model.DictionaryTermMetaExport
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import mihon.domain.dictionary.repository.DictionaryLegacyRepository
 import mihon.domain.dictionary.repository.DictionaryMigrationStatusRepository
 import mihon.domain.dictionary.repository.DictionaryRepository
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.Database
+import tachiyomi.data.subscribeToList
 
 class DictionaryRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val database: Database,
 ) : DictionaryRepository, DictionaryLegacyRepository, DictionaryMigrationStatusRepository {
 
     private val hoshi by lazy { HoshiDicts() }
@@ -32,8 +36,8 @@ class DictionaryRepositoryImpl(
     // Dictionary operations
 
     override suspend fun insertDictionary(dictionary: Dictionary): Long {
-        return handler.awaitOneExecutable(inTransaction = true) {
-            dictionaryQueries.insertDictionary(
+        return database.transactionWithResult {
+            database.dictionaryQueries.insertDictionary(
                 title = dictionary.title,
                 revision = dictionary.revision,
                 version = dictionary.version.toLong(),
@@ -52,80 +56,62 @@ class DictionaryRepositoryImpl(
                 storage_path = dictionary.storagePath,
                 storage_ready = if (dictionary.storageReady) 1L else 0L,
             )
-            dictionaryQueries.selectLastInsertedRowId()
+            database.dictionaryQueries.selectLastInsertedRowId().awaitAsOne()
         }
     }
 
     override suspend fun updateDictionary(dictionary: Dictionary) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.updateDictionary(
-                id = dictionary.id,
-                title = dictionary.title,
-                revision = dictionary.revision,
-                version = dictionary.version.toLong(),
-                author = dictionary.author,
-                url = dictionary.url,
-                description = dictionary.description,
-                attribution = dictionary.attribution,
-                styles = dictionary.styles,
-                source_language = dictionary.sourceLanguage,
-                target_language = dictionary.targetLanguage,
-                // Store boolean as integer (1 = true, 0 = false)
-                is_enabled = if (dictionary.isEnabled) 1L else 0L,
-                priority = dictionary.priority.toLong(),
-                backend = dictionary.backend.toDbValue(),
-                storage_path = dictionary.storagePath,
-                storage_ready = if (dictionary.storageReady) 1L else 0L,
-            )
-        }
+        database.dictionaryQueries.updateDictionary(
+            id = dictionary.id,
+            title = dictionary.title,
+            revision = dictionary.revision,
+            version = dictionary.version.toLong(),
+            author = dictionary.author,
+            url = dictionary.url,
+            description = dictionary.description,
+            attribution = dictionary.attribution,
+            styles = dictionary.styles,
+            source_language = dictionary.sourceLanguage,
+            target_language = dictionary.targetLanguage,
+            // Store boolean as integer (1 = true, 0 = false)
+            is_enabled = if (dictionary.isEnabled) 1L else 0L,
+            priority = dictionary.priority.toLong(),
+            backend = dictionary.backend.toDbValue(),
+            storage_path = dictionary.storagePath,
+            storage_ready = if (dictionary.storageReady) 1L else 0L,
+        )
     }
 
     override suspend fun bumpAllPrioritiesUp() {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.bumpAllPrioritiesUp()
-        }
+        database.dictionaryQueries.bumpAllPrioritiesUp()
     }
 
     override suspend fun bumpDownPrioritiesAbove(priority: Int) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.bumpDownPrioritiesAbove(priority.toLong())
-        }
+        database.dictionaryQueries.bumpDownPrioritiesAbove(priority.toLong())
     }
 
     override suspend fun deleteDictionary(dictionaryId: Long) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.deleteDictionary(dictionaryId)
-        }
+        database.dictionaryQueries.deleteDictionary(dictionaryId)
     }
 
     override suspend fun getDictionary(dictionaryId: Long): Dictionary? {
-        return handler.awaitOneOrNull {
-            dictionaryQueries.getDictionary(dictionaryId, ::mapDictionary)
-        }
+        return database.dictionaryQueries.getDictionary(dictionaryId, ::mapDictionary).awaitAsOneOrNull()
     }
 
     override suspend fun getAllDictionaries(): List<Dictionary> {
-        return handler.awaitList {
-            dictionaryQueries.getAllDictionaries(::mapDictionary)
-        }
+        return database.dictionaryQueries.getAllDictionaries(::mapDictionary).awaitAsList()
     }
 
     override suspend fun getLegacyDictionaries(): List<Dictionary> {
-        return handler.awaitList {
-            dictionaryQueries.getLegacyDictionaries(::mapDictionary)
-        }
+        return database.dictionaryQueries.getLegacyDictionaries(::mapDictionary).awaitAsList()
     }
 
     override fun subscribeToDictionaries(): Flow<List<Dictionary>> {
-        return handler.subscribeToList {
-            dictionaryQueries.getAllDictionaries(::mapDictionary)
-        }
+        return database.dictionaryQueries.getAllDictionaries(::mapDictionary).subscribeToList()
     }
 
     override suspend fun getFreqDictionaryIds(): List<Long> {
-        val freqDictionaryIds = handler.awaitList {
-            dictionaryQueries.getFreqDictionaryIds()
-        }.toMutableSet()
+        val freqDictionaryIds = database.dictionaryQueries.getFreqDictionaryIds().awaitAsList().toMutableSet()
 
         val dictionaries = getAllDictionaries()
         val hoshiFrequencyIds = withContext(Dispatchers.IO) {
@@ -165,34 +151,26 @@ class DictionaryRepositoryImpl(
         storagePath: String?,
         storageReady: Boolean,
     ) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.updateDictionaryStorage(
-                id = dictionaryId,
-                backend = backend.toDbValue(),
-                storage_path = storagePath,
-                storage_ready = if (storageReady) 1L else 0L,
-            )
-        }
+        database.dictionaryQueries.updateDictionaryStorage(
+            id = dictionaryId,
+            backend = backend.toDbValue(),
+            storage_path = storagePath,
+            storage_ready = if (storageReady) 1L else 0L,
+        )
     }
 
     // Tag operations
 
     override suspend fun getTagsForDictionary(dictionaryId: Long): List<DictionaryTag> {
-        return handler.awaitList {
-            dictionaryQueries.getTagsForDictionary(dictionaryId)
-        }.map { it.toDomain() }
+        return database.dictionaryQueries.getTagsForDictionary(dictionaryId).awaitAsList().map { it.toDomain() }
     }
 
     private suspend fun getTagCountForDictionary(dictionaryId: Long): Long {
-        return handler.awaitOneExecutable {
-            dictionaryQueries.getTagCountForDictionary(dictionaryId)
-        }
+        return database.dictionaryQueries.getTagCountForDictionary(dictionaryId).awaitAsOne()
     }
 
     override suspend fun deleteTagsForDictionary(dictionaryId: Long) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.deleteTagsForDictionary(dictionaryId)
-        }
+        database.dictionaryQueries.deleteTagsForDictionary(dictionaryId)
     }
 
     // Term operations
@@ -202,51 +180,43 @@ class DictionaryRepositoryImpl(
         limit: Long,
         offset: Long,
     ): List<DictionaryTermExport> {
-        return handler.awaitList {
-            dictionaryQueries.getTermsExportForDictionary(
-                dictionaryId = dictionaryId,
-                limit = limit,
-                offset = offset,
-            ) { expression, reading, definitionTags, rules, score, glossary, sequence, termTags ->
-                DictionaryTermExport(
-                    expression = expression,
-                    reading = reading,
-                    definitionTags = definitionTags,
-                    rules = rules,
-                    score = score.toInt(),
-                    glossaryJson = glossary.also {
-                        logcat { "Legacy Term Meta Export: $expression | $glossary" }
-                    },
-                    sequence = sequence,
-                    termTags = termTags,
-                )
-            }
-        }
+        return database.dictionaryQueries.getTermsExportForDictionary(
+            dictionaryId = dictionaryId,
+            limit = limit,
+            offset = offset,
+        ) { expression, reading, definitionTags, rules, score, glossary, sequence, termTags ->
+            DictionaryTermExport(
+                expression = expression,
+                reading = reading,
+                definitionTags = definitionTags,
+                rules = rules,
+                score = score.toInt(),
+                glossaryJson = glossary.also {
+                    logcat { "Legacy Term Meta Export: $expression | $glossary" }
+                },
+                sequence = sequence,
+                termTags = termTags,
+            )
+        }.awaitAsList()
     }
 
     private suspend fun getTermCountForDictionary(dictionaryId: Long): Long {
-        return handler.awaitOneExecutable {
-            dictionaryQueries.getTermCountForDictionary(dictionaryId)
-        }
+        return database.dictionaryQueries.getTermCountForDictionary(dictionaryId).awaitAsOne()
     }
 
     override suspend fun searchTerms(query: String, dictionaryIds: List<Long>): List<DictionaryTerm> {
-        return handler.awaitList {
-            dictionaryQueries.searchTerms(
-                query = query,
-                dictionaryIds = dictionaryIds,
-                limit = 100,
-            )
-        }.map { term ->
+        return database.dictionaryQueries.searchTerms(
+            query = query,
+            dictionaryIds = dictionaryIds,
+            limit = 100,
+        ).awaitAsList().map { term ->
             logcat { "Legacy Term Search: ${term.expression} | ${term.glossary}" }
             term.toDomain()
         }
     }
 
     override suspend fun deleteTermsForDictionary(dictionaryId: Long) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.deleteTermsForDictionary(dictionaryId)
-        }
+        database.dictionaryQueries.deleteTermsForDictionary(dictionaryId)
     }
 
     // Kanji operations
@@ -256,34 +226,28 @@ class DictionaryRepositoryImpl(
         limit: Long,
         offset: Long,
     ): List<DictionaryKanjiExport> {
-        return handler.awaitList {
-            dictionaryQueries.getKanjiExportForDictionary(
-                dictionaryId = dictionaryId,
-                limit = limit,
-                offset = offset,
-            ) { character, onyomi, kunyomi, tags, meanings, stats ->
-                DictionaryKanjiExport(
-                    character = character,
-                    onyomi = onyomi,
-                    kunyomi = kunyomi,
-                    tags = tags,
-                    meaningsJson = meanings,
-                    statsJson = stats,
-                )
-            }
-        }
+        return database.dictionaryQueries.getKanjiExportForDictionary(
+            dictionaryId = dictionaryId,
+            limit = limit,
+            offset = offset,
+        ) { character, onyomi, kunyomi, tags, meanings, stats ->
+            DictionaryKanjiExport(
+                character = character,
+                onyomi = onyomi,
+                kunyomi = kunyomi,
+                tags = tags,
+                meaningsJson = meanings,
+                statsJson = stats,
+            )
+        }.awaitAsList()
     }
 
     private suspend fun getKanjiCountForDictionary(dictionaryId: Long): Long {
-        return handler.awaitOneExecutable {
-            dictionaryQueries.getKanjiCountForDictionary(dictionaryId)
-        }
+        return database.dictionaryQueries.getKanjiCountForDictionary(dictionaryId).awaitAsOne()
     }
 
     override suspend fun deleteKanjiForDictionary(dictionaryId: Long) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.deleteKanjiForDictionary(dictionaryId)
-        }
+        database.dictionaryQueries.deleteKanjiForDictionary(dictionaryId)
     }
 
     // Term meta operations
@@ -293,43 +257,35 @@ class DictionaryRepositoryImpl(
         limit: Long,
         offset: Long,
     ): List<DictionaryTermMetaExport> {
-        return handler.awaitList {
-            dictionaryQueries.getTermMetaExportForDictionary(
-                dictionaryId = dictionaryId,
-                limit = limit,
-                offset = offset,
-            ) { expression, mode, data ->
-                DictionaryTermMetaExport(
-                    expression = expression,
-                    mode = mode,
-                    dataJson = data,
-                )
-            }
-        }
+        return database.dictionaryQueries.getTermMetaExportForDictionary(
+            dictionaryId = dictionaryId,
+            limit = limit,
+            offset = offset,
+        ) { expression, mode, data ->
+            DictionaryTermMetaExport(
+                expression = expression,
+                mode = mode,
+                dataJson = data,
+            )
+        }.awaitAsList()
     }
 
     private suspend fun getTermMetaCountForDictionary(dictionaryId: Long): Long {
-        return handler.awaitOneExecutable {
-            dictionaryQueries.getTermMetaCountForDictionary(dictionaryId)
-        }
+        return database.dictionaryQueries.getTermMetaCountForDictionary(dictionaryId).awaitAsOne()
     }
 
     override suspend fun getTermMetaForExpression(
         expression: String,
         dictionaryIds: List<Long>,
     ): List<DictionaryTermMeta> {
-        return handler.awaitList {
-            dictionaryQueries.getTermMetaForExpression(
-                expression = expression,
-                dictionaryIds = dictionaryIds,
-            )
-        }.map { it.toDomain() }
+        return database.dictionaryQueries.getTermMetaForExpression(
+            expression = expression,
+            dictionaryIds = dictionaryIds,
+        ).awaitAsList().map { it.toDomain() }
     }
 
     override suspend fun deleteTermMetaForDictionary(dictionaryId: Long) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.deleteTermMetaForDictionary(dictionaryId)
-        }
+        database.dictionaryQueries.deleteTermMetaForDictionary(dictionaryId)
     }
 
     // Kanji meta operations
@@ -339,31 +295,25 @@ class DictionaryRepositoryImpl(
         limit: Long,
         offset: Long,
     ): List<DictionaryKanjiMetaExport> {
-        return handler.awaitList {
-            dictionaryQueries.getKanjiMetaExportForDictionary(
-                dictionaryId = dictionaryId,
-                limit = limit,
-                offset = offset,
-            ) { character, mode, data ->
-                DictionaryKanjiMetaExport(
-                    character = character,
-                    mode = mode,
-                    dataJson = data,
-                )
-            }
-        }
+        return database.dictionaryQueries.getKanjiMetaExportForDictionary(
+            dictionaryId = dictionaryId,
+            limit = limit,
+            offset = offset,
+        ) { character, mode, data ->
+            DictionaryKanjiMetaExport(
+                character = character,
+                mode = mode,
+                dataJson = data,
+            )
+        }.awaitAsList()
     }
 
     private suspend fun getKanjiMetaCountForDictionary(dictionaryId: Long): Long {
-        return handler.awaitOneExecutable {
-            dictionaryQueries.getKanjiMetaCountForDictionary(dictionaryId)
-        }
+        return database.dictionaryQueries.getKanjiMetaCountForDictionary(dictionaryId).awaitAsOne()
     }
 
     override suspend fun deleteKanjiMetaForDictionary(dictionaryId: Long) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.deleteKanjiMetaForDictionary(dictionaryId)
-        }
+        database.dictionaryQueries.deleteKanjiMetaForDictionary(dictionaryId)
     }
 
     override suspend fun getLegacyRowCounts(dictionaryId: Long): DictionaryLegacyRowCounts {
@@ -377,76 +327,68 @@ class DictionaryRepositoryImpl(
     }
 
     override suspend fun upsertMigrationStatus(status: DictionaryMigrationStatus) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.upsertDictionaryMigrationStatus(
-                dictionary_id = status.dictionaryId,
-                state = status.state.toDbValue(),
-                stage = status.stage.toDbValue(),
-                progress_text = status.progressText,
-                completed_dicts = status.completedDictionaries.toLong(),
-                total_dicts = status.totalDictionaries.toLong(),
-                last_error = status.lastError,
-                updated_at = status.updatedAt,
-            )
-        }
+        database.dictionaryQueries.upsertDictionaryMigrationStatus(
+            dictionary_id = status.dictionaryId,
+            state = status.state.toDbValue(),
+            stage = status.stage.toDbValue(),
+            progress_text = status.progressText,
+            completed_dicts = status.completedDictionaries.toLong(),
+            total_dicts = status.totalDictionaries.toLong(),
+            last_error = status.lastError,
+            updated_at = status.updatedAt,
+        )
     }
 
     override suspend fun getAllMigrationStatuses(): List<DictionaryMigrationStatus> {
-        return handler.awaitList {
-            dictionaryQueries.getAllDictionaryMigrationStatuses {
-                    dictId,
-                    state,
-                    stage,
-                    progressText,
-                    completedDicts,
-                    totalDicts,
-                    lastError,
-                    updatedAt,
-                ->
-                mapMigrationStatus(
-                    dictionaryId = dictId,
-                    state = state,
-                    stage = stage,
-                    progressText = progressText,
-                    completedDictionaries = completedDicts,
-                    totalDictionaries = totalDicts,
-                    lastError = lastError,
-                    updatedAt = updatedAt,
-                )
-            }
-        }
+        return database.dictionaryQueries.getAllDictionaryMigrationStatuses {
+                dictId,
+                state,
+                stage,
+                progressText,
+                completedDicts,
+                totalDicts,
+                lastError,
+                updatedAt,
+            ->
+            mapMigrationStatus(
+                dictionaryId = dictId,
+                state = state,
+                stage = stage,
+                progressText = progressText,
+                completedDictionaries = completedDicts,
+                totalDictionaries = totalDicts,
+                lastError = lastError,
+                updatedAt = updatedAt,
+            )
+        }.awaitAsList()
     }
 
     override fun subscribeToMigrationStatuses(): Flow<List<DictionaryMigrationStatus>> {
-        return handler.subscribeToList {
-            dictionaryQueries.getAllDictionaryMigrationStatuses {
-                    dictId,
-                    state,
-                    stage,
-                    progressText,
-                    completedDicts,
-                    totalDicts,
-                    lastError,
-                    updatedAt,
-                ->
-                mapMigrationStatus(
-                    dictionaryId = dictId,
-                    state = state,
-                    stage = stage,
-                    progressText = progressText,
-                    completedDictionaries = completedDicts,
-                    totalDictionaries = totalDicts,
-                    lastError = lastError,
-                    updatedAt = updatedAt,
-                )
-            }
-        }
+        return database.dictionaryQueries.getAllDictionaryMigrationStatuses {
+                dictId,
+                state,
+                stage,
+                progressText,
+                completedDicts,
+                totalDicts,
+                lastError,
+                updatedAt,
+            ->
+            mapMigrationStatus(
+                dictionaryId = dictId,
+                state = state,
+                stage = stage,
+                progressText = progressText,
+                completedDictionaries = completedDicts,
+                totalDictionaries = totalDicts,
+                lastError = lastError,
+                updatedAt = updatedAt,
+            )
+        }.subscribeToList()
     }
 
     override suspend fun deleteMigrationStatus(dictionaryId: Long) {
-        handler.await(inTransaction = true) {
-            dictionaryQueries.deleteDictionaryMigrationStatus(dictionaryId)
-        }
+        database.dictionaryQueries.deleteDictionaryMigrationStatus(dictionaryId)
     }
 
     private fun mapDictionary(

@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.core.net.toUri
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableMap
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.dictionary.DictionaryPreferences
 import eu.kanade.domain.extension.interactor.TrustExtension

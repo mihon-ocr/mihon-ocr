@@ -22,6 +22,7 @@ android {
                 dialect(libs.sqldelight.sqliteDialect338)
                 schemaOutputDirectory.set(project.file("./src/main/sqldelight-ocr"))
                 srcDirs.setFrom("src/main/sqldelight-ocr")
+                generateAsync.set(true)
             }
         }
     }
@@ -38,6 +39,7 @@ dependencies {
     implementation(projects.domain)
     implementation(projects.core.common)
 
+    implementation(libs.androidx.sqlite.bundled)
     implementation(libs.litert)
 
     implementation(libs.anki.android)

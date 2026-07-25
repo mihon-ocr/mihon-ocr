@@ -54,8 +54,8 @@ import mihon.domain.ocr.model.OcrModel
 import mihon.domain.ocr.service.OcrPreferences
 import mihon.feature.ocr.titleRes
 import tachiyomi.i18n.MR
+import androidx.compose.material3.ExtendedFloatingActionButton
 import tachiyomi.presentation.core.components.Pill
-import tachiyomi.presentation.core.components.material.ExtendedFloatingActionButton
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen

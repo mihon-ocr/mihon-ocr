@@ -2,8 +2,15 @@ package mihon.data.ocr
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import androidx.sqlite.db.SupportSQLiteDatabase
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import app.cash.sqldelight.db.SqlDriver
+import com.eygraber.sqldelight.androidx.driver.AndroidxSqliteConfiguration
+import com.eygraber.sqldelight.androidx.driver.AndroidxSqliteDatabaseType
+import com.eygraber.sqldelight.androidx.driver.AndroidxSqliteDriver
+import com.eygraber.sqldelight.androidx.driver.FileProvider
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import mihon.domain.ocr.model.OcrBoundingBox
@@ -70,7 +77,7 @@ internal class OcrCacheStore(
                     imageWidth = imageWidth.toInt(),
                     imageHeight = imageHeight.toInt(),
                 )
-            }.executeAsOneOrNull() ?: return@withLock null
+            }.awaitAsOneOrNull() ?: return@withLock null
 
             val regions = db.ocr_cacheQueries.getRegionsForPage(page.id) {
                     _id,
@@ -99,7 +106,7 @@ internal class OcrCacheStore(
                         textOrientation = OcrTextOrientation.valueOf(orientation),
                     ),
                 )
-            }.executeAsList()
+            }.awaitAsList()
 
             OcrPageResult(
                 chapterId = page.chapterId,
@@ -123,7 +130,7 @@ internal class OcrCacheStore(
             val db = getDatabase()
             db.ocr_cacheQueries.getCachedChapterIds(
                 chapter_id = chapterIds.toList(),
-            ).executeAsList().toSet()
+            ).awaitAsList().toSet()
         }
     }
 
@@ -174,16 +181,13 @@ internal class OcrCacheStore(
 
     private fun createDatabaseHandle(): DatabaseHandle {
         deleteDatabaseIfSchemaOutdated()
-        val driver = AndroidSqliteDriver(
+        val driver = AndroidxSqliteDriver(
+            driver = BundledSQLiteDriver(),
+            databaseType = AndroidxSqliteDatabaseType.FileProvider(context, DB_NAME),
             schema = OcrCacheDatabase.Schema,
-            context = context,
-            name = DB_NAME,
-            callback = object : AndroidSqliteDriver.Callback(OcrCacheDatabase.Schema) {
-                override fun onOpen(db: SupportSQLiteDatabase) {
-                    super.onOpen(db)
-                    db.execSQL("PRAGMA foreign_keys = ON")
-                }
-            },
+            configuration = AndroidxSqliteConfiguration(
+                isForeignKeyConstraintsEnabled = true,
+            ),
         )
         return DatabaseHandle(
             database = OcrCacheDatabase(driver),
@@ -254,7 +258,7 @@ internal class OcrCacheStore(
 
     private data class DatabaseHandle(
         val database: OcrCacheDatabase,
-        val driver: AndroidSqliteDriver,
+        val driver: SqlDriver,
     ) {
         fun close() {
             driver.close()

@@ -31,7 +31,7 @@ class LegacyDictionaryArchiveBuilderTest {
         repository = mockk()
         legacyRepository = mockk()
         builder = LegacyDictionaryArchiveBuilder(repository, legacyRepository)
-        tempDir = createTempDir(prefix = "legacy-dict-archive-test")
+        tempDir = java.nio.file.Files.createTempDirectory("legacy-dict-archive-test").toFile()
     }
 
     @AfterEach

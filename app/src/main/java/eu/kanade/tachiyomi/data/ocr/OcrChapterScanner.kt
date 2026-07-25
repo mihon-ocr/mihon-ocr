@@ -190,7 +190,7 @@ internal class OcrChapterScanner(
     private fun checkNetworkState(): String? {
         val state = context.activeNetworkState()
         return if (state.isOnline) {
-            val requireWifi = downloadPreferences.downloadOnlyOverWifi().get()
+            val requireWifi = downloadPreferences.downloadOnlyOverWifi.get()
             if (requireWifi && !state.isWifi) {
                 context.getString(R.string.download_notifier_text_only_wifi)
             } else {

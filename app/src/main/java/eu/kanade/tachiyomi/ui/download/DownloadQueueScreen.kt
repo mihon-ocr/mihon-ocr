@@ -195,7 +195,7 @@ object DownloadQueueScreen : Screen() {
                 )
             },
             floatingActionButton = {
-                val isRunning by screenModel.isDownloaderRunning.collectAsState()
+                val isRunning by screenModel.isDownloadQueueRunning.collectAsState()
                 SmallExtendedFloatingActionButton(
                     text = {
                         val id = if (isRunning) {
@@ -217,7 +217,7 @@ object DownloadQueueScreen : Screen() {
                         if (isRunning) {
                             screenModel.pauseDownloads()
                         } else {
-                            screenModel.startDownloads()
+                            screenModel.resumeDownloads()
                         }
                     },
                     expanded = fabExpanded,

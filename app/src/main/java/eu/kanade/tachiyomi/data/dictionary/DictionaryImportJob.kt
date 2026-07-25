@@ -92,7 +92,7 @@ class DictionaryImportJob(
         val destination = File(downloadsDir, "dictionary_${System.currentTimeMillis()}.zip")
 
         val downloader = TrustedFileDownloader(
-            client = networkHelper.nonCloudflareClient,
+            client = networkHelper.client,
             allowedHosts = TRUSTED_DICTIONARY_HOSTS,
             maxBytes = MAX_DICTIONARY_DOWNLOAD_BYTES,
         )

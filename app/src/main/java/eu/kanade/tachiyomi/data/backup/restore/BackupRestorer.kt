@@ -181,10 +181,10 @@ class BackupRestorer(
         ensureActive()
         savedSearchRestorer.restoreSavedSearches(backupSavedSearches)
 
-        restoreProgress += 1
+        restoreProgress.incrementAndFetch()
         notifier.showRestoreProgress(
             context.stringResource(MR.strings.saved_searches),
-            restoreProgress,
+            restoreProgress.load(),
             restoreAmount,
             isSync,
         )
