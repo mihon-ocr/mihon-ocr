@@ -35,7 +35,7 @@ val LocalPreferenceMinHeight = compositionLocalOf(structuralEqualityPolicy()) { 
 
 @Composable
 fun StatusWrapper(
-    item: Preference.PreferenceItem<*>,
+    item: Preference.PreferenceItem<*, *>,
     highlightKey: String?,
     content: @Composable () -> Unit,
 ) {
@@ -56,7 +56,7 @@ fun StatusWrapper(
 
 @Composable
 internal fun PreferenceItem(
-    item: Preference.PreferenceItem<*>,
+    item: Preference.PreferenceItem<*, *>,
     highlightKey: String?,
 ) {
     val scope = rememberCoroutineScope()
@@ -83,17 +83,18 @@ internal fun PreferenceItem(
             }
             is Preference.PreferenceItem.SliderPreference -> {
                 BaseSliderItem(
-                    label = item.title,
                     value = item.value,
                     valueRange = item.valueRange,
-                    valueText = item.subtitle.takeUnless { it.isNullOrEmpty() } ?: item.value.toString(),
                     steps = item.steps,
-                    labelStyle = MaterialTheme.typography.titleLarge.copy(fontSize = TitleFontSize),
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    valueString = item.valueString.takeUnless { it.isNullOrEmpty() } ?: item.value.toString(),
                     onChange = {
                         scope.launch {
                             item.onValueChanged(it)
                         }
                     },
+                    titleStyle = MaterialTheme.typography.titleLarge.copy(fontSize = TitleFontSize),
                     modifier = Modifier.padding(
                         horizontal = PrefsHorizontalPadding,
                         vertical = 8.dp,
@@ -127,15 +128,18 @@ internal fun PreferenceItem(
                     onValueChange = { scope.launch { item.onValueChanged(it) } },
                 )
             }
-            is Preference.PreferenceItem.MultiSelectListPreference -> {
+            is Preference.PreferenceItem.MultiSelectListPreference<*> -> {
                 val values by item.preference.collectAsState()
                 MultiSelectListPreferenceWidget(
-                    preference = item,
                     values = values,
+                    title = item.title,
+                    subtitle = item.internalSubtitleProvider(values, item.entries),
+                    icon = item.icon,
+                    entries = item.entries,
                     onValuesChange = { newValues ->
                         scope.launch {
-                            if (item.onValueChanged(newValues)) {
-                                item.preference.set(newValues.toMutableSet())
+                            if (item.internalOnValueChanged(newValues)) {
+                                item.internalSet(newValues)
                             }
                         }
                     },
@@ -146,6 +150,7 @@ internal fun PreferenceItem(
                     title = item.title,
                     subtitle = item.subtitle,
                     icon = item.icon,
+                    widget = item.widget,
                     onPreferenceClick = item.onClick,
                 )
             }
@@ -169,7 +174,7 @@ internal fun PreferenceItem(
                 }
                 TrackingPreferenceWidget(
                     tracker = item.tracker,
-                    checked = isLoggedIn,
+                    isLoggedIn = isLoggedIn,
                     onClick = { if (isLoggedIn) item.logout() else item.login() },
                 )
             }

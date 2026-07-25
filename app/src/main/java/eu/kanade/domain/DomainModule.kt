@@ -82,6 +82,15 @@ import mihon.domain.ocr.interactor.WithOcrScanSession
 import mihon.domain.ocr.repository.OcrRepository
 import mihon.domain.panel.interactor.DetectPanels
 import mihon.domain.panel.repository.PanelDetectionRepository
+import mihon.data.extension.repository.ExtensionStoreRepositoryImpl
+import mihon.data.extension.service.ExtensionStoreService
+import mihon.domain.extension.interactor.AddExtensionStore
+import mihon.domain.extension.interactor.GetExtensionStoreCountAsFlow
+import mihon.domain.extension.interactor.GetExtensionStores
+import mihon.domain.extension.interactor.RemoveExtensionStore
+import mihon.domain.extension.interactor.UpdateExtensionStores
+import mihon.domain.extension.repository.ExtensionStoreRepository
+import mihon.domain.source.interactor.UpdateMangaFromRemote
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
@@ -105,6 +114,7 @@ import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.category.interactor.UpdateCategory
 import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.GetChapterByUrlAndMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
@@ -210,6 +220,7 @@ class DomainModule : InjektModule {
         addSingletonFactory<ChapterRepository> { ChapterRepositoryImpl(get()) }
         addFactory { GetChapter(get()) }
         addFactory { GetChaptersByMangaId(get()) }
+        addFactory { GetBookmarkedChaptersByMangaId(get()) }
         addFactory { GetChapterByUrlAndMangaId(get()) }
         addFactory { UpdateChapter(get()) }
         addFactory { SetReadStatus(get(), get(), get(), get()) }
@@ -251,14 +262,14 @@ class DomainModule : InjektModule {
         addFactory { ToggleSourcePin(get()) }
         addFactory { TrustExtension(get(), get()) }
 
-        addSingletonFactory<ExtensionRepoRepository> { ExtensionRepoRepositoryImpl(get()) }
-        addFactory { ExtensionRepoService(get(), get()) }
-        addFactory { GetExtensionRepo(get()) }
-        addFactory { GetExtensionRepoCount(get()) }
-        addFactory { CreateExtensionRepo(get(), get()) }
-        addFactory { DeleteExtensionRepo(get()) }
-        addFactory { ReplaceExtensionRepo(get()) }
-        addFactory { UpdateExtensionRepo(get(), get()) }
+        addSingletonFactory { ExtensionStoreService(get(), get(), get()) }
+        addSingletonFactory<ExtensionStoreRepository> { ExtensionStoreRepositoryImpl(get(), get()) }
+        addFactory { AddExtensionStore(get()) }
+        addFactory { GetExtensionStoreCountAsFlow(get()) }
+        addFactory { GetExtensionStores(get()) }
+        addFactory { RemoveExtensionStore(get()) }
+        addFactory { UpdateExtensionStores(get()) }
+
         addFactory { ToggleIncognito(get()) }
         addFactory { GetIncognitoState(get(), get(), get()) }
 
@@ -312,5 +323,6 @@ class DomainModule : InjektModule {
             )
         }
         addFactory { DetectPanels(get()) }
+        addFactory { UpdateMangaFromRemote(get(), get(), get(), get(), get(), get(), get()) }
     }
 }

@@ -1,14 +1,13 @@
 package eu.kanade.tachiyomi.data.backup.restore
 
 import dev.icerock.moko.resources.StringResource
-import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 
 data class RestoreOptions(
     val libraryEntries: Boolean = true,
     val categories: Boolean = true,
     val appSettings: Boolean = true,
-    val extensionRepoSettings: Boolean = true,
+    val extensionStores: Boolean = true,
     val sourceSettings: Boolean = true,
     val savedSearches: Boolean = true,
 ) {
@@ -17,16 +16,16 @@ data class RestoreOptions(
         libraryEntries,
         categories,
         appSettings,
-        extensionRepoSettings,
+        extensionStores,
         sourceSettings,
         savedSearches,
     )
 
     fun canRestore() =
-        libraryEntries || categories || appSettings || extensionRepoSettings || sourceSettings || savedSearches
+        libraryEntries || categories || appSettings || extensionStores || sourceSettings || savedSearches
 
     companion object {
-        val options = persistentListOf(
+        val options = listOf(
             Entry(
                 label = MR.strings.label_library,
                 getter = RestoreOptions::libraryEntries,
@@ -43,9 +42,9 @@ data class RestoreOptions(
                 setter = { options, enabled -> options.copy(appSettings = enabled) },
             ),
             Entry(
-                label = MR.strings.extensionRepo_settings,
-                getter = RestoreOptions::extensionRepoSettings,
-                setter = { options, enabled -> options.copy(extensionRepoSettings = enabled) },
+                label = MR.strings.extensionStores,
+                getter = RestoreOptions::extensionStores,
+                setter = { options, enabled -> options.copy(extensionStores = enabled) },
             ),
             Entry(
                 label = MR.strings.source_settings,
@@ -60,12 +59,12 @@ data class RestoreOptions(
         )
 
         fun fromBooleanArray(array: BooleanArray) = RestoreOptions(
-            libraryEntries = array.getOrElse(0) { true },
-            categories = array.getOrElse(1) { true },
-            appSettings = array.getOrElse(2) { true },
-            extensionRepoSettings = array.getOrElse(3) { true },
-            sourceSettings = array.getOrElse(4) { true },
-            savedSearches = array.getOrElse(5) { true },
+            libraryEntries = array[0],
+            categories = array[1],
+            appSettings = array[2],
+            extensionStores = array[3],
+            sourceSettings = array[4],
+            savedSearches = array[5],
         )
     }
 

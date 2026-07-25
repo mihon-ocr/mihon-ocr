@@ -91,7 +91,7 @@ object SettingsMainScreen : Screen() {
                     navigateUp = backPress::invoke,
                     actions = {
                         AppBarActions(
-                            persistentListOf(
+                            listOf(
                                 AppBar.Action(
                                     title = stringResource(MR.strings.action_search),
                                     icon = Icons.Outlined.Search,

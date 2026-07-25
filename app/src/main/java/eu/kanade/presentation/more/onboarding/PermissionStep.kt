@@ -152,7 +152,7 @@ internal class PermissionStep : OnboardingStep {
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
 
-            val crashlyticsPref = privacyPreferences.crashlytics()
+            val crashlyticsPref = privacyPreferences.crashlytics
             val crashlytics by crashlyticsPref.collectAsState()
             PermissionSwitch(
                 title = stringResource(MR.strings.onboarding_permission_crashlytics),
@@ -161,7 +161,7 @@ internal class PermissionStep : OnboardingStep {
                 onToggleChange = crashlyticsPref::set,
             )
 
-            val analyticsPref = privacyPreferences.analytics()
+            val analyticsPref = privacyPreferences.analytics
             val analytics by analyticsPref.collectAsState()
             PermissionSwitch(
                 title = stringResource(MR.strings.onboarding_permission_analytics),
@@ -196,8 +196,6 @@ internal class PermissionStep : OnboardingStep {
     ) {
         ListItem(
             modifier = modifier,
-            headlineContent = { Text(text = title) },
-            supportingContent = { Text(text = subtitle) },
             trailingContent = {
                 OutlinedButton(
                     enabled = !granted,
@@ -214,7 +212,9 @@ internal class PermissionStep : OnboardingStep {
                     }
                 }
             },
+            supportingContent = { Text(text = subtitle) },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            content = { Text(text = title) },
         )
     }
 
@@ -228,15 +228,15 @@ internal class PermissionStep : OnboardingStep {
     ) {
         ListItem(
             modifier = modifier,
-            headlineContent = { Text(text = title) },
-            supportingContent = { Text(text = subtitle) },
             trailingContent = {
                 Switch(
                     checked = granted,
                     onCheckedChange = onToggleChange,
                 )
             },
+            supportingContent = { Text(text = subtitle) },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            content = { Text(text = title) },
         )
     }
 }

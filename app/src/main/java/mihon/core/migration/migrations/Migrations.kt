@@ -9,4 +9,6 @@ val migrations: List<Migration>
         TrustExtensionRepositoryMigration(),
         CategoryPreferencesCleanupMigration(),
         SetupDictionaryOcrPresentationMigration(),
+        InstallationIdMigration(),
+        VerticalNavigatorMigration(),
     )

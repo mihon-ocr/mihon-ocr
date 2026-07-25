@@ -1,100 +1,88 @@
 package eu.kanade.tachiyomi.data.track.suwayomi
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-@Serializable
-data class SourceDataClass(
-    val id: String,
-    val name: String,
-    val lang: String,
-    val iconUrl: String,
-
-    /** The Source provides a latest listing */
-    val supportsLatest: Boolean,
-
-    /** The Source implements [ConfigurableSource] */
-    val isConfigurable: Boolean,
-
-    /** The Source class has a @Nsfw annotation */
-    val isNsfw: Boolean,
-
-    /** A nicer version of [name] */
-    val displayName: String,
-)
+enum class MangaStatus(
+    val rawValue: String,
+) {
+    UNKNOWN("UNKNOWN"),
+    ONGOING("ONGOING"),
+    COMPLETED("COMPLETED"),
+    LICENSED("LICENSED"),
+    PUBLISHING_FINISHED("PUBLISHING_FINISHED"),
+    CANCELLED("CANCELLED"),
+    ON_HIATUS("ON_HIATUS"),
+}
 
 @Serializable
-data class MangaDataClass(
-    val id: Int,
-    val sourceId: String,
-
-    val url: String,
-    val title: String,
-    val thumbnailUrl: String?,
-
-    val initialized: Boolean,
-
+data class MangaFragment(
     val artist: String?,
     val author: String?,
     val description: String?,
+    val id: Int,
+    val status: MangaStatus,
+    val thumbnailUrl: String?,
+    val title: String,
+    val url: String,
     val genre: List<String>,
-    val status: String,
-    val inLibrary: Boolean,
     val inLibraryAt: Long,
-    val source: SourceDataClass?,
+    val chapters: Chapters,
+    val latestUploadedChapter: LatestUploadedChapter?,
+    val latestFetchedChapter: LatestFetchedChapter?,
+    val latestReadChapter: LatestReadChapter?,
+    val unreadCount: Int,
+    val downloadCount: Int,
+) {
+    @Serializable
+    data class Chapters(
+        val totalCount: Int,
+    )
 
-    val meta: Map<String, String>,
+    @Serializable
+    data class LatestUploadedChapter(
+        val uploadDate: Long,
+    )
 
-    val realUrl: String?,
-    val lastFetchedAt: Long?,
-    val chaptersLastFetchedAt: Long?,
+    @Serializable
+    data class LatestFetchedChapter(
+        val fetchedAt: Long,
+    )
 
-    val freshData: Boolean,
-    val unreadCount: Long?,
-    val downloadCount: Long?,
-    val chapterCount: Long, // actually is nullable server side, but should be set at this time
-    val lastChapterRead: ChapterDataClass?,
+    @Serializable
+    data class LatestReadChapter(
+        val lastReadAt: Long,
+        val chapterNumber: Double,
+    )
+}
 
-    val age: Long?,
-    val chaptersAge: Long?,
+@Serializable
+data class GetMangaResult(
+    val data: GetMangaData,
 )
 
 @Serializable
-data class ChapterDataClass(
+data class GetMangaData(
+    @SerialName("manga") val entry: MangaFragment,
+)
+
+@Serializable
+data class GetMangaUnreadChaptersEntry(
+    val nodes: List<GetMangaUnreadChaptersNode>,
+)
+
+@Serializable
+data class GetMangaUnreadChaptersNode(
     val id: Int,
-    val url: String,
-    val name: String,
-    val uploadDate: Long,
     val chapterNumber: Double,
-    val scanlator: String?,
-    val mangaId: Int,
+)
 
-    /** chapter is read */
-    val read: Boolean,
+@Serializable
+data class GetMangaUnreadChaptersResult(
+    val data: GetMangaUnreadChaptersData,
+)
 
-    /** chapter is bookmarked */
-    val bookmarked: Boolean,
-
-    /** last read page, zero means not read/no data */
-    val lastPageRead: Int,
-
-    /** last read page, zero means not read/no data */
-    val lastReadAt: Long,
-
-    /** this chapter's index, starts with 1 */
-    val index: Int,
-
-    /** the date we fist saw this chapter*/
-    val fetchedAt: Long,
-
-    /** is chapter downloaded */
-    val downloaded: Boolean,
-
-    /** used to construct pages in the front-end */
-    val pageCount: Int,
-
-    /** total chapter count, used to calculate if there's a next and prev chapter */
-    val chapterCount: Int?,
-
-    /** used to store client specific values */
-    val meta: Map<String, String>,
+@Serializable
+data class GetMangaUnreadChaptersData(
+    @SerialName("chapters") val entry: GetMangaUnreadChaptersEntry,
 )

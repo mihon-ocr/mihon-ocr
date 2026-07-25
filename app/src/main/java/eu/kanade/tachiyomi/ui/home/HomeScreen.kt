@@ -245,8 +245,8 @@ object HomeScreen : Screen() {
                         val count by produceState(initialValue = 0) {
                             val pref = Injekt.get<LibraryPreferences>()
                             combine(
-                                pref.newShowUpdatesCount().changes(),
-                                pref.newUpdatesCount().changes(),
+                                pref.newShowUpdatesCount.changes(),
+                                pref.newUpdatesCount.changes(),
                             ) { show, count -> if (show) count else 0 }
                                 .collectLatest { value = it }
                         }
@@ -266,7 +266,7 @@ object HomeScreen : Screen() {
                     }
                     BrowseTab::class.isInstance(tab) -> {
                         val count by produceState(initialValue = 0) {
-                            Injekt.get<SourcePreferences>().extensionUpdatesCount().changes()
+                            Injekt.get<SourcePreferences>().extensionUpdatesCount.changes()
                                 .collectLatest { value = it }
                         }
                         if (count > 0) {

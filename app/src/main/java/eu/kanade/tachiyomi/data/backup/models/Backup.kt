@@ -11,6 +11,6 @@ data class Backup(
     @ProtoNumber(101) var backupSources: List<BackupSource> = emptyList(),
     @ProtoNumber(104) var backupPreferences: List<BackupPreference> = emptyList(),
     @ProtoNumber(105) var backupSourcePreferences: List<BackupSourcePreferences> = emptyList(),
-    @ProtoNumber(106) var backupExtensionRepo: List<BackupExtensionRepos> = emptyList(),
+    @ProtoNumber(106) var backupExtensionStores: List<BackupExtensionStore> = emptyList(),
     @ProtoNumber(600) var backupSavedSearches: List<BackupSavedSearch> = emptyList(),
 )

@@ -2,69 +2,92 @@ package eu.kanade.tachiyomi.ui.setting.track
 
 import android.net.Uri
 import androidx.lifecycle.lifecycleScope
-import tachiyomi.core.common.util.lang.launchIO
+import kotlinx.coroutines.launch
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 
 class TrackLoginActivity : BaseOAuthLoginActivity() {
 
-    override fun handleResult(data: Uri?) {
-        when (data?.host) {
-            "anilist-auth" -> handleAnilist(data)
-            "bangumi-auth" -> handleBangumi(data)
-            "myanimelist-auth" -> handleMyAnimeList(data)
-            "shikimori-auth" -> handleShikimori(data)
+    override fun handleResult(uri: Uri) {
+        val data = when {
+            !uri.encodedQuery.isNullOrBlank() -> uri.encodedQuery
+            !uri.encodedFragment.isNullOrBlank() -> uri.encodedFragment
+            else -> null
+        }
+            ?.split("&")
+            ?.filter { it.isNotBlank() }
+            ?.associate {
+                val parts = it.split("=", limit = 2).map<String, String>(Uri::decode)
+                parts[0] to parts.getOrNull(1)
+            }
+            .orEmpty()
+
+        lifecycleScope.launch {
+            when (uri.host) {
+                "anilist-auth" -> handleAniList(data["access_token"])
+                "bangumi-auth" -> handleBangumi(data["code"])
+                "mangabaka-auth" -> handleMangaBaka(data["code"], data["state"])
+                "myanimelist-auth" -> handleMyAnimeList(data["code"])
+                "shikimori-auth" -> handleShikimori(data["code"])
+                "hikka-auth" -> handleHikka(data["reference"])
+            }
+            returnToSettings()
         }
     }
 
-    private fun handleAnilist(data: Uri) {
-        val regex = "(?:access_token=)(.*?)(?:&)".toRegex()
-        val matchResult = regex.find(data.fragment.toString())
-        if (matchResult?.groups?.get(1) != null) {
-            lifecycleScope.launchIO {
-                trackerManager.aniList.login(matchResult.groups[1]!!.value)
-                returnToSettings()
-            }
+    private suspend fun handleAniList(accessToken: String?) {
+        if (accessToken != null) {
+            trackerManager.aniList.login(accessToken)
         } else {
             trackerManager.aniList.logout()
-            returnToSettings()
         }
     }
 
-    private fun handleBangumi(data: Uri) {
-        val code = data.getQueryParameter("code")
+    private suspend fun handleBangumi(code: String?) {
         if (code != null) {
-            lifecycleScope.launchIO {
-                trackerManager.bangumi.login(code)
-                returnToSettings()
-            }
+            trackerManager.bangumi.login(code)
         } else {
             trackerManager.bangumi.logout()
-            returnToSettings()
         }
     }
 
-    private fun handleMyAnimeList(data: Uri) {
-        val code = data.getQueryParameter("code")
+    private suspend fun handleMangaBaka(code: String?, state: String?) {
+        if (state == null) {
+            logcat(LogPriority.WARN) { "Did not receive state parameter from MangaBaka OAuth" }
+            return
+        }
         if (code != null) {
-            lifecycleScope.launchIO {
-                trackerManager.myAnimeList.login(code)
-                returnToSettings()
+            if (!trackerManager.mangaBaka.verifyOAuthState(state)) {
+                logcat(LogPriority.WARN) { "Received wrong OAuth state back from MangaBaka" }
+                return
             }
+            trackerManager.mangaBaka.login(code)
+        } else {
+            trackerManager.mangaBaka.logout()
+        }
+    }
+
+    private suspend fun handleMyAnimeList(code: String?) {
+        if (code != null) {
+            trackerManager.myAnimeList.login(code)
         } else {
             trackerManager.myAnimeList.logout()
-            returnToSettings()
         }
     }
 
-    private fun handleShikimori(data: Uri) {
-        val code = data.getQueryParameter("code")
+    private suspend fun handleShikimori(code: String?) {
         if (code != null) {
-            lifecycleScope.launchIO {
-                trackerManager.shikimori.login(code)
-                returnToSettings()
-            }
+            trackerManager.shikimori.login(code)
         } else {
             trackerManager.shikimori.logout()
-            returnToSettings()
+        }
+    }
+
+    private suspend fun handleHikka(reference: String?) {
+        if (reference != null) {
+            trackerManager.hikka.login(reference)
+        } else {
+            trackerManager.hikka.logout()
         }
     }
 }
