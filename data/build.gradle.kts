@@ -9,11 +9,6 @@ plugins {
 android {
     namespace = "tachiyomi.data"
 
-    defaultConfig {
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
-    }
-
     sqldelight {
         databases {
             create("Database") {

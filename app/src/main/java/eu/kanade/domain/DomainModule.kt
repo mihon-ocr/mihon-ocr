@@ -45,7 +45,6 @@ import mihon.data.dictionary.HoshiDictionaryStore
 import mihon.data.dictionary.LegacyDictionaryArchiveBuilder
 import mihon.data.ocr.OcrRepositoryImpl
 import mihon.data.panel.PanelDetectionRepositoryImpl
-import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.domain.ankidroid.interactor.AddDictionaryCard
 import mihon.domain.ankidroid.interactor.FindExistingAnkiNotes
 import mihon.domain.ankidroid.repository.AnkiDroidRepository
@@ -62,14 +61,6 @@ import mihon.domain.dictionary.service.DictionaryParser
 import mihon.domain.dictionary.service.DictionarySearchBackend
 import mihon.domain.dictionary.service.DictionarySearchGateway
 import mihon.domain.dictionary.service.DictionaryStorageGateway
-import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
-import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
-import mihon.domain.extensionrepo.interactor.GetExtensionRepo
-import mihon.domain.extensionrepo.interactor.GetExtensionRepoCount
-import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
-import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
-import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
-import mihon.domain.extensionrepo.service.ExtensionRepoService
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.domain.ocr.interactor.ClearCachedChapterOcr
 import mihon.domain.ocr.interactor.ClearOcrCache
