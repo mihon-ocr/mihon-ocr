@@ -30,8 +30,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,14 +43,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
+import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.Insets
 import androidx.core.net.toUri
 import androidx.core.transition.doOnEnd
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.graphics.ColorUtils
-import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.elevation.SurfaceColors
@@ -100,9 +100,9 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderOcrRegionSelection
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderSelectionCapture
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderSelectionRegion
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.queryRangeToDisplayRange
 import eu.kanade.tachiyomi.ui.reader.viewer.searchTextForOffset
-import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -545,7 +545,7 @@ class ReaderActivity : BaseActivity() {
         return handled || super.dispatchGenericMotionEvent(event)
     }
 
-        override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         lastTouchEvent?.recycle()
         lastTouchEvent = MotionEvent.obtain(ev)
 
@@ -688,7 +688,9 @@ class ReaderActivity : BaseActivity() {
 
                 val chapterNavigatorType = remember(readingMode, verticalNavigator, verticalNavigatorOnLeft) {
                     when {
-                        verticalNavigator.contains(readingMode) && verticalNavigatorOnLeft -> ChapterNavigatorType.VERTICAL_LEFT
+                        verticalNavigator.contains(
+                            readingMode,
+                        ) && verticalNavigatorOnLeft -> ChapterNavigatorType.VERTICAL_LEFT
                         verticalNavigator.contains(readingMode) -> ChapterNavigatorType.VERTICAL_RIGHT
                         readingMode == ReadingMode.RIGHT_TO_LEFT -> ChapterNavigatorType.HORIZONTAL_RTL
                         else -> ChapterNavigatorType.HORIZONTAL_LTR

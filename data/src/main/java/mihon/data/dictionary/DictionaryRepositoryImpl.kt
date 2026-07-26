@@ -1,5 +1,8 @@
 package mihon.data.dictionary
 
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import de.manhhao.hoshi.HoshiDicts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -17,9 +20,6 @@ import mihon.domain.dictionary.model.DictionaryTerm
 import mihon.domain.dictionary.model.DictionaryTermExport
 import mihon.domain.dictionary.model.DictionaryTermMeta
 import mihon.domain.dictionary.model.DictionaryTermMetaExport
-import app.cash.sqldelight.async.coroutines.awaitAsList
-import app.cash.sqldelight.async.coroutines.awaitAsOne
-import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import mihon.domain.dictionary.repository.DictionaryLegacyRepository
 import mihon.domain.dictionary.repository.DictionaryMigrationStatusRepository
 import mihon.domain.dictionary.repository.DictionaryRepository

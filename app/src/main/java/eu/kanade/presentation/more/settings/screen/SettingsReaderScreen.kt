@@ -439,7 +439,7 @@ object SettingsReaderScreen : SearchableSettings {
                     enabled = readWithLongTap,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.folderPerManga,  
+                    preference = readerPreferences.folderPerManga,
                     title = stringResource(MR.strings.pref_create_folder_per_manga),
                     subtitle = stringResource(MR.strings.pref_create_folder_per_manga_summary),
                 ),

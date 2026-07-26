@@ -1,4 +1,4 @@
-/**
+/*
  * Converts GlossaryEntry and GlossaryNode structures to HTML for Anki card export.
  * Preserves the structured content including data attributes used by dictionary CSS.
  */

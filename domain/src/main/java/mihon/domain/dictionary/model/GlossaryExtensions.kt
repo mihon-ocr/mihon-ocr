@@ -1,4 +1,4 @@
-/**
+/*
  * Extension functions for analyzing and extracting data from GlossaryNode trees.
  */
 package mihon.domain.dictionary.model

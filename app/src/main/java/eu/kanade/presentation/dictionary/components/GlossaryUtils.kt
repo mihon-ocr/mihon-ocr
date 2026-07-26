@@ -1,4 +1,4 @@
-/**
+/*
  * Contains Compose UI-specific helper functions for rendering GlossaryNode trees.
  *
  * Domain logic (text extraction, node analysis) is in:

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -54,7 +55,6 @@ import mihon.domain.ocr.model.OcrModel
 import mihon.domain.ocr.service.OcrPreferences
 import mihon.feature.ocr.titleRes
 import tachiyomi.i18n.MR
-import androidx.compose.material3.ExtendedFloatingActionButton
 import tachiyomi.presentation.core.components.Pill
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource

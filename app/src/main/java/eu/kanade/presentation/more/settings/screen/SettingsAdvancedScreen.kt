@@ -24,8 +24,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.core.net.toUri
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toImmutableMap
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.dictionary.DictionaryPreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
@@ -56,6 +54,8 @@ import eu.kanade.tachiyomi.util.system.isShizukuInstalled
 import eu.kanade.tachiyomi.util.system.powerManager
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.domain.dictionary.interactor.ParserLanguage

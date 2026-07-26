@@ -1,4 +1,4 @@
-/**
+/*
  * CSS parsing utilities for dictionary styling.
  * Parses CSS text into structured data for easier styling application.
  */

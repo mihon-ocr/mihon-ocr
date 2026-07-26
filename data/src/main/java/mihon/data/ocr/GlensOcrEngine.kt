@@ -897,7 +897,7 @@ private class ProtoReader(
         if (position + 4 > bytes.size) {
             throw IOException("Unexpected end of protobuf while reading float")
         }
-        val bits = (bytes[position ].toInt() and 0xFF) or
+        val bits = (bytes[position].toInt() and 0xFF) or
             ((bytes[position + 1].toInt() and 0xFF) shl 8) or
             ((bytes[position + 2].toInt() and 0xFF) shl 16) or
             ((bytes[position + 3].toInt() and 0xFF) shl 24)
