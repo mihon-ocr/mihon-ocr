@@ -41,7 +41,8 @@ firebase-crashlytics = "3.0.7"
 flexibleAdapter = "c8013533"
 furiganable = "v0.1.2"
 google-services = "4.5.0"
-image-decoder = "e03b81e18a"
+hoshidicts = "v1.4.1"
+image-decoder = "da05c859ff"
 injekt = "91edab2317"
 jsoup = "1.22.2"
 junit = "6.1.1"
@@ -136,8 +137,8 @@ firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "fir
 firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }
 flexibleAdapter = { module = "com.github.arkon.FlexibleAdapter:flexible-adapter", version.ref = "flexibleAdapter" }
 furiganable = { module = "com.github.yomihon.Furiganable:compose-m3", version.ref = "furiganable" }
-hoshidicts = "com.github.yomihon:hoshidicts:v1.4.1"
-image-decoder = { module = "com.github.yomihon:image-decoder", version = "da05c859ff" }
+hoshidicts = { module = "com.github.yomihon:hoshidicts", version.ref = "hoshidicts" }
+image-decoder = { module = "com.github.yomihon:image-decoder", version.ref = "image-decoder" }
 injekt = { module = "com.github.mihonapp:injekt", version.ref = "injekt" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
