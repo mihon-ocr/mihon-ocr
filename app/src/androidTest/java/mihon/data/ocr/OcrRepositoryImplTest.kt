@@ -35,10 +35,7 @@ class OcrRepositoryImplTest {
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
-        ocrRepository = OcrRepositoryImpl(
-            context = context,
-            downloadPreferences = DownloadPreferences(AndroidPreferenceStore(context)),
-        )
+        ocrRepository = OcrRepositoryImpl(context)
         ocrProcessor = OcrProcessor(ocrRepository)
     }
 

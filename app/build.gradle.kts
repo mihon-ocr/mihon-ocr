@@ -359,3 +359,35 @@ androidComponents {
         it.packaging.resources.excludes.add("META-INF/*.version")
     }
 }
+
+tasks.matching { it.name.startsWith("process") && it.name.contains("Manifest") }.configureEach {
+    doFirst {
+        inputs.files.files.forEach { file ->
+            if (file.isDirectory) {
+                file.walkTopDown().filter {
+                    it.name == "AndroidManifest.xml" && it.path.contains("litert-api")
+                }.forEach { xmlFile ->
+                    val text = xmlFile.readText()
+                    if (text.contains("package=\"com.google.ai.edge.litert\"")) {
+                        xmlFile.writeText(
+                            text.replace(
+                                "package=\"com.google.ai.edge.litert\"",
+                                "package=\"com.google.ai.edge.litert.api\"",
+                            ),
+                        )
+                    }
+                }
+            } else if (file.name == "AndroidManifest.xml" && file.path.contains("litert-api")) {
+                val text = file.readText()
+                if (text.contains("package=\"com.google.ai.edge.litert\"")) {
+                    file.writeText(
+                        text.replace(
+                            "package=\"com.google.ai.edge.litert\"",
+                            "package=\"com.google.ai.edge.litert.api\"",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
