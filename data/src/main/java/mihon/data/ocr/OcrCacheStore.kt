@@ -41,7 +41,7 @@ internal class OcrCacheStore(
                     imageHeight = pageResult.imageHeight.toLong(),
                     createdAt = System.currentTimeMillis(),
                 )
-                val pageId = db.ocr_cacheQueries.selectLastInsertedRowId().executeAsOne()
+                val pageId = db.ocr_cacheQueries.selectLastInsertedRowId().awaitAsOne()
                 pageResult.regions.forEach { region ->
                     val box = region.boundingBox
                     db.ocr_cacheQueries.insertRegion(
