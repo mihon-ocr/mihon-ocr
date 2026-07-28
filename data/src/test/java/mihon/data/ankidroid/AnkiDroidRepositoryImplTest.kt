@@ -32,4 +32,28 @@ class AnkiDroidRepositoryImplTest {
 
         assertEquals("<ruby>日本語<rt>にほんご</rt></ruby>", formatted)
     }
+
+    @Test
+    fun `formatSentenceWithBoldWord bolds expression in sentence`() {
+        val result = formatSentenceWithBoldWord("リンゴを食べる。", "食べる", "たべる")
+        assertEquals("リンゴを<b>食べる</b>。", result)
+    }
+
+    @Test
+    fun `formatSentenceWithBoldWord does not duplicate bold tags if already bolded`() {
+        val result = formatSentenceWithBoldWord("リンゴを<b>食べる</b>。", "食べる", "たべる")
+        assertEquals("リンゴを<b>食べる</b>。", result)
+    }
+
+    @Test
+    fun `formatSentenceWithBoldWord falls back to reading if the expression isn't present`() {
+        val result = formatSentenceWithBoldWord("わたしは学生です", "私", "わたし")
+        assertEquals("<b>わたし</b>は学生です", result)
+    }
+
+    @Test
+    fun `formatSentenceWithBoldWord handles empty inputs`() {
+        assertEquals("", formatSentenceWithBoldWord("", "食べる"))
+        assertEquals("リンゴを食べる。", formatSentenceWithBoldWord("リンゴを食べる。", ""))
+    }
 }

@@ -12,6 +12,7 @@ class AnkiDroidPreferences(
     fun modelName() = preferenceStore.getString("ankidroid_model_name", "Yomihon Card")
     fun dictionaryAudioPrefill() = preferenceStore.getBoolean("pref_anki_dictionary_audio_prefill", true)
     fun croppedImageExport() = preferenceStore.getBoolean("pref_cropped_image_export", false)
+    fun boldSentenceWord() = preferenceStore.getBoolean("pref_anki_bold_sentence_word", false)
 
     fun fieldMappings(): Preference<Map<String, String>> = preferenceStore.getObjectFromString(
         key = "ankidroid_field_mappings",

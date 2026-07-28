@@ -110,6 +110,11 @@ object SettingsAnkiScreen : SearchableSettings {
                             title = stringResource(MR.strings.anki_cropped_image_export),
                             subtitle = stringResource(MR.strings.anki_cropped_image_export_summary),
                         ),
+                        Preference.PreferenceItem.SwitchPreference(
+                            preference = remember(screenModel) { screenModel.boldSentenceWordPreference() },
+                            title = stringResource(MR.strings.anki_bold_sentence_word),
+                            subtitle = stringResource(MR.strings.anki_bold_sentence_word_summary),
+                        ),
                     ).toImmutableList(),
                 ),
             )

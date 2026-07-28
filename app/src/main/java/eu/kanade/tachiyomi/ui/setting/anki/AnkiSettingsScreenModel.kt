@@ -215,6 +215,10 @@ class AnkiSettingsScreenModel(
         return ankiDroidPreferences.croppedImageExport()
     }
 
+    fun boldSentenceWordPreference(): Preference<Boolean> {
+        return ankiDroidPreferences.boldSentenceWord()
+    }
+
     fun clearError() {
         mutableState.update { it.copy(error = null) }
     }

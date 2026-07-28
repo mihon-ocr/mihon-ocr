@@ -132,6 +132,13 @@ class AnkiDroidRepositoryImpl(
                 audioFilename?.let { "[sound:$it]" }.orEmpty()
             } else if (appField == "furigana") {
                 formatFurigana(card.expression, card.reading)
+            } else if (appField == "sentence") {
+                val sentence = card.sentence
+                if (ankiDroidPreferences.boldSentenceWord().get()) {
+                    formatSentenceWithBoldWord(sentence, card.expression, card.reading)
+                } else {
+                    sentence
+                }
             } else if (appField != null) {
                 card.getFieldValue(appField)
             } else {
@@ -425,6 +432,26 @@ b{color: #5586cd}
 }
 """
     }
+}
+
+internal fun formatSentenceWithBoldWord(sentence: String, expression: String, reading: String = ""): String {
+    if (sentence.isBlank() || expression.isBlank()) return sentence
+
+    if (sentence.contains(expression)) {
+        if (sentence.contains("<b>$expression</b>")) {
+            return sentence
+        }
+        return sentence.replace(expression, "<b>$expression</b>")
+    }
+
+    if (reading.isNotBlank() && sentence.contains(reading)) {
+        if (sentence.contains("<b>$reading</b>")) {
+            return sentence
+        }
+        return sentence.replace(reading, "<b>$reading</b>")
+    }
+
+    return sentence
 }
 
 private data class ExpressionToken(

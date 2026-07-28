@@ -1181,6 +1181,8 @@
     <string name="anki_dictionary_audio_prefill_summary">Attach fetched dictionary audio to Anki exports when available</string>
     <string name="anki_cropped_image_export">Crop exported image</string>
     <string name="anki_cropped_image_export_summary">Select a page region before exporting a card</string>
+    <string name="anki_bold_sentence_word">Bold word in sentence field</string>
+    <string name="anki_bold_sentence_word_summary">Bolden the target word in the sentence field when creating a card</string>
     <string name="anki_field_mappings">Field Mappings</string>
     <string name="anki_field_empty">Empty</string>
     <string name="anki_field_audio">Audio</string>
