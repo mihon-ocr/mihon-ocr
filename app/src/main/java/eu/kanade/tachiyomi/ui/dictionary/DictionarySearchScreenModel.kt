@@ -242,6 +242,17 @@ class DictionarySearchScreenModel(
                 // Shared metadata
                 val query = state.value.query
                 val sentence = if (query.isNotBlank() && query != expression) query else ""
+                val range = state.value.results?.highlightRange
+                val sentenceSurface = if (sentence.isNotBlank() && range != null) {
+                    val (start, end) = range
+                    if (start >= 0 && end <= query.length && start < end) {
+                        query.substring(start, end)
+                    } else {
+                        ""
+                    }
+                } else {
+                    ""
+                }
                 val termMeta = state.value.results?.termMetaMap?.get(expression) ?: emptyList()
                 val pitchAccentSvg = PitchAccentFormatter.formatPitchAccentSvg(termMeta, reading)
                 val frequencyText = formatFrequencyText(termMeta, reading)
@@ -275,6 +286,7 @@ class DictionarySearchScreenModel(
                     dictionaries = dicts,
                     glossaryHtml = glossaryHtml,
                     sentence = sentence,
+                    sentenceSurface = sentenceSurface,
                     audio = audio?.file?.absolutePath.orEmpty(),
                     pitchAccent = pitchAccentSvg,
                     frequency = frequencyText,

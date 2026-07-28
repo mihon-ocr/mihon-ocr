@@ -135,7 +135,12 @@ class AnkiDroidRepositoryImpl(
             } else if (appField == "sentence") {
                 val sentence = card.sentence
                 if (ankiDroidPreferences.boldSentenceWord().get()) {
-                    formatSentenceWithBoldWord(sentence, card.expression, card.reading)
+                    formatSentenceWithBoldWord(
+                        sentence = sentence,
+                        expression = card.expression,
+                        reading = card.reading,
+                        surface = card.sentenceSurface,
+                    )
                 } else {
                     sentence
                 }
@@ -434,24 +439,44 @@ b{color: #5586cd}
     }
 }
 
-internal fun formatSentenceWithBoldWord(sentence: String, expression: String, reading: String = ""): String {
-    if (sentence.isBlank() || expression.isBlank()) return sentence
+internal fun formatSentenceWithBoldWord(
+    sentence: String,
+    expression: String,
+    reading: String = "",
+    surface: String = "",
+): String {
+    if (sentence.isBlank()) return sentence
 
-    if (sentence.contains(expression)) {
-        if (sentence.contains("<b>$expression</b>")) {
-            return sentence
-        }
-        return sentence.replace(expression, "<b>$expression</b>")
-    }
-
-    if (reading.isNotBlank() && sentence.contains(reading)) {
-        if (sentence.contains("<b>$reading</b>")) {
-            return sentence
-        }
-        return sentence.replace(reading, "<b>$reading</b>")
-    }
+    boldTarget(sentence, surface)?.let { return it }
+    boldTarget(sentence, expression)?.let { return it }
+    boldTarget(sentence, reading)?.let { return it }
 
     return sentence
+}
+
+// basic check, good enough, but not entirely accurate
+private fun containsNonLatin(text: String): Boolean {
+    return text.any { char -> char.code > 0x7F && !Character.isWhitespace(char) }
+}
+
+private fun boldTarget(sentence: String, target: String): String? {
+    if (target.isBlank()) return null
+
+    val patternStr = if (containsNonLatin(target)) {
+        target.map { Regex.escape(it.toString()) }.joinToString("\\s*")
+    } else {
+        Regex.escape(target)
+    }
+
+    val regex = Regex(patternStr, RegexOption.IGNORE_CASE)
+    if (!regex.containsMatchIn(sentence)) return null
+
+    val alreadyBoldedRegex = Regex("<b>\\s*(?:$patternStr)\\s*</b>", RegexOption.IGNORE_CASE)
+    if (alreadyBoldedRegex.containsMatchIn(sentence)) {
+        return sentence
+    }
+
+    return regex.replace(sentence) { "<b>${it.value}</b>" }
 }
 
 private data class ExpressionToken(

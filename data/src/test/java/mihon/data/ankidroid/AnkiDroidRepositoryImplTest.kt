@@ -40,15 +40,39 @@ class AnkiDroidRepositoryImplTest {
     }
 
     @Test
+    fun `formatSentenceWithBoldWord prioritizes surface match for inflected forms`() {
+        val result = formatSentenceWithBoldWord("昨日、りんごを食べた。", "食べる", "たべる", "食べた")
+        assertEquals("昨日、りんごを<b>食べた</b>。", result)
+    }
+
+    @Test
+    fun `formatSentenceWithBoldWord bolds sub-word in compound word via surface match`() {
+        val result = formatSentenceWithBoldWord("彼は東京大学の学生です。", "大学", "だいがく", "大学")
+        assertEquals("彼は東京<b>大学</b>の学生です。", result)
+    }
+
+    @Test
     fun `formatSentenceWithBoldWord does not duplicate bold tags if already bolded`() {
-        val result = formatSentenceWithBoldWord("リンゴを<b>食べる</b>。", "食べる", "たべる")
+        val result = formatSentenceWithBoldWord("リンゴを<b>食べる</b>。", "食べる", "たべる", "食べる")
         assertEquals("リンゴを<b>食べる</b>。", result)
     }
 
     @Test
-    fun `formatSentenceWithBoldWord falls back to reading if the expression isn't present`() {
-        val result = formatSentenceWithBoldWord("わたしは学生です", "私", "わたし")
+    fun `formatSentenceWithBoldWord falls back to reading if expression and surface aren't present`() {
+        val result = formatSentenceWithBoldWord("わたしは学生です", "私", "わたし", "")
         assertEquals("<b>わたし</b>は学生です", result)
+    }
+
+    @Test
+    fun `formatSentenceWithBoldWord handles case insensitivity for English text`() {
+        val result = formatSentenceWithBoldWord("Apple is an apple.", "apple", "", "apple")
+        assertEquals("<b>Apple</b> is an <b>apple</b>.", result)
+    }
+
+    @Test
+    fun `formatSentenceWithBoldWord handles spaces breaking the word`() {
+        val result = formatSentenceWithBoldWord("私 は 学生 です", "私は", "わたしは", "私は")
+        assertEquals("<b>私 は</b> 学生 です", result)
     }
 
     @Test
