@@ -10,6 +10,18 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical stuff.
 
+## [v0.4.0] - 2026-07-28
+
+### Added
+- Add option to bold target word in sentence field for Anki card export
+
+### Changed
+- Upgraded upstream base to Mihon v0.20.1 (from v0.19.3)
+  - You can see Mihon's full changelog [here](https://mihon.app/changelogs/)
+
+### Improved
+- Update LiteRT to v2.1.6 for armv7 support
+
 ## [v0.3.2] - 2026-06-02
 
 ### Added
@@ -167,7 +179,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - The full changelog for Mihon releases is available in their [repository](https://github.com/mihonapp/mihon/blob/main/CHANGELOG.md).
 
 
-[unreleased]: https://github.com/yomihon/yomihon/compare/v0.3.1...main
+[unreleased]: https://github.com/yomihon/yomihon/compare/v0.4.0...main
+[v0.4.0]: https://github.com/yomihon/yomihon/compare/v0.3.2...v0.4.0
+[v0.3.2]: https://github.com/yomihon/yomihon/compare/v0.3.1...v0.3.2
 [v0.3.1]: https://github.com/yomihon/yomihon/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/yomihon/yomihon/compare/v0.2.5...v0.3.0
 [v0.2.5]: https://github.com/yomihon/yomihon/compare/v0.2.4...v0.2.5
