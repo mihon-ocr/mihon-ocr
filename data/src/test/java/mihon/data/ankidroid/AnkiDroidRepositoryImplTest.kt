@@ -6,6 +6,20 @@ import org.junit.jupiter.api.Test
 class AnkiDroidRepositoryImplTest {
 
     @Test
+    fun `addAdditionalAnkiTag preserves existing tags and adds configured tag`() {
+        val result = addAdditionalAnkiTag(setOf("yomihon", "jmdict"), "  my-tag  ")
+
+        assertEquals(setOf("yomihon", "jmdict", "my-tag"), result)
+    }
+
+    @Test
+    fun `addAdditionalAnkiTag ignores blank configured tag`() {
+        val tags = setOf("yomihon")
+
+        assertEquals(tags, addAdditionalAnkiTag(tags, "   "))
+    }
+
+    @Test
     fun `formatFurigana only applies ruby to kanji spans`() {
         val formatted = formatFurigana("食べる", "たべる")
 
