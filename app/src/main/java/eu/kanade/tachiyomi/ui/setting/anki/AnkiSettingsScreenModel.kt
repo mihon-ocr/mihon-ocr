@@ -36,6 +36,7 @@ class AnkiSettingsScreenModel(
                 val savedModelId = ankiDroidPreferences.modelId().get()
                 val savedDeckName = ankiDroidPreferences.deckName().get()
                 val savedModelName = ankiDroidPreferences.modelName().get()
+                val savedAdditionalTag = ankiDroidPreferences.additionalTag().get()
                 val savedFieldMappings = ankiDroidPreferences.fieldMappings().get()
 
                 mutableState.update {
@@ -44,6 +45,7 @@ class AnkiSettingsScreenModel(
                         selectedModelId = savedModelId,
                         deckName = savedDeckName,
                         modelName = savedModelName,
+                        additionalTag = savedAdditionalTag,
                         fieldMappings = savedFieldMappings,
                     )
                 }
@@ -198,6 +200,11 @@ class AnkiSettingsScreenModel(
         ankiDroidPreferences.deckName().set(name)
     }
 
+    fun updateAdditionalTag(tag: String) {
+        mutableState.update { it.copy(additionalTag = tag) }
+        ankiDroidPreferences.additionalTag().set(tag)
+    }
+
     fun updateFieldMapping(ankiField: String, appVariable: String) {
         mutableState.update { currentState ->
             val updatedMappings = currentState.fieldMappings.toMutableMap()
@@ -237,6 +244,7 @@ class AnkiSettingsScreenModel(
         val selectedModelId: Long = -1L,
         val deckName: String = "Yomihon",
         val modelName: String = "Yomihon Card",
+        val additionalTag: String = "",
         val fieldMappings: Map<String, String> = emptyMap(),
         val isLoading: Boolean = true,
         val error: String? = null,

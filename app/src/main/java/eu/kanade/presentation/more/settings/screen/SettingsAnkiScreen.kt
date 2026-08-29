@@ -179,6 +179,23 @@ object SettingsAnkiScreen : SearchableSettings {
             ),
         )
 
+        items.add(
+            Preference.PreferenceItem.CustomPreference(
+                title = stringResource(MR.strings.anki_additional_tag),
+            ) {
+                OutlinedTextField(
+                    value = state.additionalTag,
+                    onValueChange = { screenModel.updateAdditionalTag(it) },
+                    label = { Text(stringResource(MR.strings.anki_additional_tag)) },
+                    supportingText = { Text(stringResource(MR.strings.anki_additional_tag_summary)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    singleLine = true,
+                )
+            },
+        )
+
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.anki_deck_note_config),
             preferenceItems = items.toImmutableList(),
